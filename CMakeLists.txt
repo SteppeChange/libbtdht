@@ -68,6 +68,3 @@ include_directories(${PROJECT_SOURCE_DIR}/btutils/src)
 add_definitions(-DCHARSET_ANSI=ansi)
 add_definitions(-DCHARSET_UNICODE=unicode)
 add_definitions(-DCHARSET_DEFAULT=$(CHARSET_UNICODE))
-
-
-target_link_libraries(btdht PUBLIC m pthread )
