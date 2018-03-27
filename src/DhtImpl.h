@@ -59,6 +59,7 @@ class DhtImpl;
 class DhtID;
 
 void CopyBytesToDhtID(DhtID &id, const byte *b);
+void CopyDhtIDToBytes(DhtID const &id, byte *b);
 
 //--------------------------------------------------------------------------------
 //
@@ -84,6 +85,14 @@ public:
 		CopyBytesToDhtID(*this, lhs.value);
 		return *this;
 	}
+
+	sha1_hash sha1() const
+	{
+		sha1_hash hash;
+		CopyDhtIDToBytes(*this, &hash.value[0]);
+		return hash;
+	}
+
 
 	bool operator <(const DhtID &n) const {
 		for(uint i=0; i<DHT_ID_WORDCOUNT; i++) {
@@ -1056,6 +1065,9 @@ class DhtLookupNodeList
 		std::vector<char> &get_data_blk() { return data_blk; }
 		char * get_data_blk(size_t & len) { len = data_blk.size(); return &data_blk[0]; }	
 		SockAddr data_blk_source() const { return src_ip; }
+
+		void DumpNodes();
+
 };
 
 inline DhtLookupNodeList::DhtLookupNodeList():numNodes(0), seq_max(0)
@@ -1383,6 +1395,35 @@ class FindNodeDhtProcess : public DhtLookupScheduler //public DhtProcessBase
 #ifdef _DEBUG_DHT
 		virtual char const* name() const { return "FindNode"; }
 #endif
+};
+
+class FindNodeEventualyDhtProcess : public FindNodeDhtProcess
+{
+public:
+
+	FindNodeEventualyDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const DhtID &target2
+	, time_t startTime, const CallBackPointers &consumerCallbacks
+	, int maxOutstanding, int flags);
+
+	static DhtProcessBase* Create(DhtImpl* pImpl, DhtProcessManager &dpm
+			, const DhtID &target2
+			, CallBackPointers &cbPointers
+			, int maxOutstanding
+			, int flags
+			, std::function<void(sockaddr_storage const& node_addr)> const& a_success_fun
+			, std::function<void(std::string const& error_reason)> const& a_failed_fun);
+
+	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
+	virtual void CompleteThisProcess();
+
+#ifdef _DEBUG_DHT
+	virtual char const* name() const { return "FindNodeEventualy"; }
+#endif
+
+protected:
+	DhtPeerID found_peer;
+	std::function<void(sockaddr_storage const& node_addr)> success_fun;
+	std::function<void(std::string const& error_reason)> failed_fun;
 };
 
 
@@ -1798,7 +1839,9 @@ public:
 	DhtImpl(UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr
 		, DhtSaveCallback* save = NULL
 		, DhtLoadCallback* load = NULL
-		, ExternalIPCounter* eip = NULL);
+		, ExternalIPCounter* eip = NULL
+		, DHTEvents* dht_events = NULL
+	);
 	~DhtImpl();
 	REFBASE;
 
@@ -1814,31 +1857,32 @@ public:
 #endif
 
 private:
-	void Initialize(UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr );
+	void Initialize(UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr ) override;
+
 public:
 
 	// UDPSocketManagerObserver
-	bool handleReadEvent(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr);
-	bool handleICMP(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr);
+	bool handleReadEvent(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr) override;
+	bool handleICMP(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr) override;
 
-	void Close() { _closing = true; }
+	void Close() override { _closing = true; }
 	bool Closing() { return _closing; }
-	void Shutdown();
-	void Tick();
-	void Enable(bool enabled, int rate);
-	bool IsEnabled();
-	void ForceRefresh();
+	void Shutdown() override;
+	void Tick() override;
+	void Enable(bool enabled, int rate) override;
+	bool IsEnabled() override;
+	void ForceRefresh() override;
 	// do not respond to queries - for mobile nodes with data constraints
-	void SetReadOnly(bool readOnly);
-	void SetPingFrequency(int seconds);
-	void SetPingBatching(int num_pings);
-	void EnableQuarantine(bool e);
+	void SetReadOnly(bool readOnly) override;
+	void SetPingFrequency(int seconds) override;
+	void SetPingBatching(int num_pings) override;
+	void EnableQuarantine(bool e) override;
 
-	bool CanAnnounce();
+	bool CanAnnounce() override;
 
-	void Vote(void *ctx, const sha1_hash* info_hash, int vote, DhtVoteCallback* callb);
+	void Vote(void *ctx, const sha1_hash* info_hash, int vote, DhtVoteCallback* callb) override;
 
-	void SetId(byte new_id_bytes[DHT_ID_SIZE]);
+	void SetId(byte new_id_bytes[DHT_ID_SIZE]) override;
 
 	// get the target id of a mutable item
 	DhtID MutableTarget(const byte* key, const byte* salt, int salt_length);
@@ -1847,47 +1891,51 @@ public:
 		, DhtPutCompletedCallback* put_completed_callback
 		, DhtPutDataCallback* put_data_callback
 		, void *ctx, int flags = 0
-		, int64 seq = 0);
+		, int64 seq = 0) override;
 
 	sha1_hash ImmutablePut(const byte * data, size_t data_len,
-			DhtPutCompletedCallback* put_completed_callback, void *ctx);
+			DhtPutCompletedCallback* put_completed_callback, void *ctx) override;
 
 	void ImmutableGet(sha1_hash target, DhtGetCallback* cb
-		, void* ctx = nullptr);
+		, void* ctx = nullptr) override;
 
 	void AnnounceInfoHash(const byte *info_hash,
 		DhtAddNodesCallback *addnodes_callback, DhtPortCallback* pcb, cstr file_name,
-		void *ctx, int flags);
+		void *ctx, int flags) override;
 
-	void SetRate(int bytes_per_second);
-	void SetVersion(char const* client, int major, int minor);
-	void SetExternalIPCounter(ExternalIPCounter* ip);
-	void SetAddNodeResponseCallback(DhtAddNodeResponseCallback* cb);
-	void SetSHACallback(DhtSHACallback* cb);
-	void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb);
-	void SetEd25519SignCallback(Ed25519SignCallback* cb);
-	void SetPacketCallback(DhtPacketCallback* cb);
+	void FindNode(sha1_hash const& target,
+				  std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+				  std::function<void(std::string const& error_reason)> const& failed_fun)  override;
 
-	void AddNode(const SockAddr& addr, void* userdata, uint origin);
-	void AddBootstrapNode(SockAddr const& addr);
+	void SetRate(int bytes_per_second) override;
+	void SetVersion(char const* client, int major, int minor) override;
+	void SetExternalIPCounter(ExternalIPCounter* ip) override;
+	void SetAddNodeResponseCallback(DhtAddNodeResponseCallback* cb) override;
+	void SetSHACallback(DhtSHACallback* cb) override;
+	void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) override;
+	void SetEd25519SignCallback(Ed25519SignCallback* cb) override;
+	void SetPacketCallback(DhtPacketCallback* cb) override;
 
-	void DumpBuckets();
-	void DumpTracked();
+	void AddNode(const SockAddr& addr, void* userdata, uint origin) override;
+	void AddBootstrapNode(SockAddr const& addr) override;
+
+	void DumpBuckets() override;
+	void DumpTracked() override;
 
 	int CalculateLowestBucketSpan();
 
-	int GetProbeQuota();
-	bool CanAddNode();
-	int GetNumPeers();
-	bool IsBusy();
-	int GetBootstrapState();
-	int GetRate();
-	int GetQuota();
-	int GetProbeRate();
-	int GetNumPeersTracked();
+	int GetProbeQuota() override;
+	bool CanAddNode() override;
+	int GetNumPeers() override;
+	bool IsBusy() override;
+	int GetBootstrapState() override;
+	int GetRate() override;
+	int GetQuota() override;
+	int GetProbeRate() override;
+	int GetNumPeersTracked() override;
+
 	int GetNumPutItems();
 	void CountExternalIPReport( const SockAddr& addr, const SockAddr& voter );
-
 	bool IsBootstrap(const SockAddr& addr);
 
 
@@ -2078,6 +2126,7 @@ public:
 
 	UDPSocketInterface *_udp_socket_mgr;
 	UDPSocketInterface *_udp6_socket_mgr;
+	DHTEvents* _dht_events;
 	SockAddr _lastLeadingAddress;	// For tracking external voting of our ip
 	std::vector<SockAddr> _bootstrap_routers;
 
@@ -2249,9 +2298,9 @@ public:
 	void GenRandomIDInBucket(DhtID &target, DhtBucket* bucket);
 	uint PingStalestNode();
 
-	void DoFindNodes(DhtID &target
-		, IDhtProcessCallbackListener *process_callback
-		, int flags = 0);
+	void DoFindNodes(DhtID const& target,
+					 std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+					 std::function<void(std::string const& error_reason)> const& failed_fun);
 
 	void DoBootstrap();
 
@@ -2275,7 +2324,7 @@ public:
 	uint PingStalestInBucket(uint buck);
 
 	// Implement IDhtProcessCallback::ProcessCallback(), for bootstrap callback
-	void ProcessCallback();
+	void ProcessCallback() override;
 
 	// the response from a node passed to AddNode()
 	void OnAddNodeReply(void*& userdata, const DhtPeerID &peer_id
@@ -2290,11 +2339,11 @@ public:
 
 	void SetId(DhtID id);
 
-	void Restart();
-	void GenerateId();
+	void Restart() override;
+	void GenerateId() override;
 
 	bool ParseKnownPackets(const SockAddr& addr, byte *buf, int pkt_size);
-	bool ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr);
+	bool ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr) override;
 
 
 	// Save all non-failed peers.

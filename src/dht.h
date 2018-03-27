@@ -28,10 +28,19 @@ limitations under the License.
 #include "sockaddr.h"
 #include "RefBase.h"
 #include "smart_ptr.h"
+#include <functional>
 
 class UDPSocketInterface;
 class ExternalIPCounter;
 class BencEntity;
+
+
+class DHTEvents {
+public:
+	virtual void dht_id_has_changed( sha1_hash new_id)= 0;
+//	virtual ~DHTEvents() {};
+};
+
 
 // callback types used in the DHT
 typedef void DhtVoteCallback(void *ctx, const byte *target, int const* votes);
@@ -138,6 +147,9 @@ public:
 		void *ctx,
 		int flags = 0) = 0;
 
+	virtual void FindNode(sha1_hash const& target,
+						  std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+						  std::function<void(std::string const& error_reason)> const& failed_fun)  = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;
 	virtual void Enable(bool enabled, int rate) = 0;
@@ -209,7 +221,7 @@ public:
 };
 
 smart_ptr<IDht> create_dht(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
-	, DhtSaveCallback* save, DhtLoadCallback* load, ExternalIPCounter* eip = NULL);
+	, DhtSaveCallback* save, DhtLoadCallback* load, ExternalIPCounter* eip = NULL, DHTEvents* dht_events = NULL);
 
 void set_log_callback(DhtLogCallback* log);
 
