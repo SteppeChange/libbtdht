@@ -6540,7 +6540,9 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->origin = candidateNode.origin;
 #endif
 		memset(&peer->client, 0, sizeof(peer->client));
+#ifdef _DEBUG_DHT
 		debug_log("Add node %s", format_dht_id(peer->id.id));
+#endif
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
 
@@ -6672,7 +6674,9 @@ bool ClientID::operator ==(const ClientID &c) const {
 void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 		void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags)
 {
+#ifdef _DEBUG_DHT
 	debug_log("FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess");
+#endif
 
 	{
 
@@ -6796,8 +6800,10 @@ void FindNodeEventualyDhtProcess::CompleteThisProcess()
 
 void DhtLookupNodeList::DumpNodes()
 {
+#ifdef _DEBUG_DHT
 	debug_log("Lookup nodes:");
 		for (int i = 0; i < size(); i++) {
 			debug_log("%d %s %s", i, format_dht_id(nodes[i].id.id), print_sockaddr(nodes[i].id.addr).c_str());
 		}
+#endif
 };
