@@ -1995,10 +1995,6 @@ public:
 	// DhtBucket is fairly light weight
 	std::vector<DhtBucket*> _buckets; // DHT buckets
 
-	// set of all addresses in the routing table
-	// used to enforce only one entry per IP
-	std::set<uint32> _ip4s;
-
 	//static MAKE_BLOCK_ALLOCATOR(_dht_bucket_allocator, DhtBucket, 50);
 	//static MAKE_BLOCK_ALLOCATOR(_dht_peer_allocator, DhtPeer, 100);
 
@@ -2176,20 +2172,6 @@ public:
 	DhtRequest *SendFindNode(const DhtPeerID &peer_id);
 
 	void SendPunch(SockAddr const& dst, SockAddr const& punchee);
-
-	void AddTableIP(SockAddr const& addr)
-	{
-		uint32 addr4 = addr.get_addr4();
-		bool inserted = _ip4s.insert(addr4).second;
-		assert(inserted);
-	}
-
-	void RemoveTableIP(SockAddr const& addr)
-	{
-		uint32 addr4 = addr.get_addr4();
-		assert(_ip4s.count(addr4) == 1);
-		_ip4s.erase(addr4);
-	}
 
 	// Update the internal DHT tables with an id.
 	DhtPeer *Update(const DhtPeerID &id, uint origin, bool seen = false, int rtt = INT_MAX);
