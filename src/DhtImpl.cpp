@@ -36,6 +36,7 @@ limitations under the License.
 #include <math.h>
 #include <stdarg.h>
 #include <limits>
+#include <netdb.h>
 
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 const char MUTABLE_PAYLOAD_FORMAT[] = "3:seqi%" PRId64 "e1:v";
@@ -660,10 +661,60 @@ void DhtImpl::SendTo(SockAddr const& peer, const void *data, uint len)
 	_dht_quota -= len;
 
 	//Need replace by the new WinRT udp socket implementation
-	UDPSocketInterface *socketMgr = (peer.isv4())?_udp_socket_mgr:
-		_udp6_socket_mgr;
+	UDPSocketInterface *socketMgr = (peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr;
 	assert(socketMgr);
-	socketMgr->Send(peer, (byte*)data, len);
+    
+    // we cant address ipv4 ip from ipv6 network
+	if(peer.get_family() !=  socketMgr->GetBindAddr().get_family())
+	{
+		// resolve target address (peer) to bind interface family
+		sockaddr_storage sa = peer.get_sockaddr_storage();
+		std::string addr_name;
+		if (sa.ss_family == AF_INET6) {
+			char buffer[INET6_ADDRSTRLEN];
+			int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in6), buffer, sizeof(buffer), 0, 0,
+									NI_NUMERICHOST);
+			if (error == 0)
+				addr_name = buffer;
+		}
+		if (sa.ss_family == AF_INET) {
+			char buffer[INET_ADDRSTRLEN];
+			int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in), buffer, sizeof(buffer), 0, 0,
+									NI_NUMERICHOST);
+			if (error == 0)
+				addr_name = buffer;
+		}
+#if defined(_DEBUG_DHT)
+        debug_log("Resolving before send %s:%d", addr_name.c_str(), peer.get_port());
+#endif
+		struct addrinfo hints, *res0;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = PF_UNSPEC;
+		hints.ai_socktype = SOCK_DGRAM;
+		hints.ai_protocol = IPPROTO_UDP;
+		hints.ai_flags = AI_PASSIVE;
+		int error = getaddrinfo(addr_name.c_str(), std::to_string(peer.get_port()).c_str(), &hints, &res0);
+		if (error) {
+			do_log("dht getaddrinfo fails: %d\n", error);
+			return;
+		}
+		SockAddr resolved_peer;
+		for (struct addrinfo *i = res0; i != nullptr; i = i->ai_next) {
+			if (i->ai_family == AF_INET && socketMgr->GetBindAddr().isv4()) {
+				sockaddr_in *v4 = (sockaddr_in *) i->ai_addr;
+				resolved_peer = SockAddr(ntohl(v4->sin_addr.s_addr), ntohs(v4->sin_port));
+			}
+			if (i->ai_family == AF_INET6 && socketMgr->GetBindAddr().isv6()) {
+				sockaddr_in6 *v6 = (sockaddr_in6 *) i->ai_addr;
+				resolved_peer = SockAddr(v6->sin6_addr, ntohs(v6->sin6_port));
+			}
+		}
+
+		socketMgr->Send(resolved_peer, (byte *) data, len);
+	}
+	else
+		socketMgr->Send(peer, (byte *) data, len);
+
 }
 
 void CopyBytesToDhtID(DhtID &id, const byte *b)
