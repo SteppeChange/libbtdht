@@ -3749,6 +3749,7 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 
 	// TODO: v6
 	if (addr.isv6()) {
+        debug_log("IPv6 from is not supported");
 		Account(DHT_INVALID_IPV6, len);
 		return true;
 	}
@@ -4959,7 +4960,7 @@ void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	smart_buffer sb(buf, sizeof(buf));
 
 #ifdef _DEBUG_DHT
-	debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
+debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
 			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id) , hexify(target_bytes));
 #endif
 
