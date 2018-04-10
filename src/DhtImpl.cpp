@@ -3748,11 +3748,13 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 	Account(DHT_BW_IN_TOTAL, len);
 
 	// TODO: v6
-	if (addr.isv6()) {
+/*	if (addr.isv6()) {
+#if defined(_DEBUG_DHT)
         debug_log("IPv6 from is not supported");
+ #endif
 		Account(DHT_INVALID_IPV6, len);
 		return true;
-	}
+	} */
 
 	if (ParseKnownPackets(addr, buffer, len)) {
 		Account(DHT_BW_IN_KNOWN, len);
