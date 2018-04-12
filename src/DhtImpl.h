@@ -111,7 +111,7 @@ public:
 	}
 };
 
-const char *format_dht_id(const DhtID &id);
+std::string format_dht_id(const DhtID &id);
 
 /**
  Returns the bit at bitIndex.  id[0] contains the upper most bits and
@@ -974,6 +974,10 @@ struct DhtFindNodeEntry {
 
 	// the 16 bit version number from the DHT messages
 	uint version;
+
+	// the source of information about this peer
+	// for example: we ask A  about neigbohours, A reply about B (B is neigbohour of A), so A is source_peer for B
+//	DhtPeerID source_peer;
 };
 
 struct DhtGetNodeResult {
@@ -1413,7 +1417,7 @@ public:
 			, CallBackPointers &cbPointers
 			, int maxOutstanding
 			, int flags
-			, std::function<void(sockaddr_storage const& node_addr)> const& a_success_fun
+			, std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& a_success_fun
 			, std::function<void(std::string const& error_reason)> const& a_failed_fun);
 
 	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
@@ -1425,7 +1429,8 @@ public:
 
 protected:
 	DhtPeerID found_peer;
-	std::function<void(sockaddr_storage const& node_addr)> success_fun;
+	DhtPeerID source_peer;
+	std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> success_fun;
 	std::function<void(std::string const& error_reason)> failed_fun;
 };
 
@@ -1907,7 +1912,7 @@ public:
 		void *ctx, int flags) override;
 
 	void FindNode(sha1_hash const& target,
-				  std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+				  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 				  std::function<void(std::string const& error_reason)> const& failed_fun)  override;
 
 	void SetRate(int bytes_per_second) override;
@@ -2284,7 +2289,7 @@ public:
 	uint PingStalestNode();
 
 	void DoFindNodes(DhtID const& target,
-					 std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+					 std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 					 std::function<void(std::string const& error_reason)> const& failed_fun);
 
 	void DoBootstrap();

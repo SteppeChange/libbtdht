@@ -208,12 +208,12 @@ char const* print_version(char c[2], int version)
 #define TRACE debug_log("TRACE fun:%s file:%s line:%d",__func__, __FILE__, __LINE__)
 
 
-const char *format_dht_id(const DhtID &id)
+std::string format_dht_id(const DhtID &id)
 {
 	static char buf[100];
 	snprintf(buf, sizeof(buf), "%.8X%.8X%.8X%.8X%.8X",
 		 id.id[0], id.id[1], id.id[2], id.id[3], id.id[4]);
-	return buf;
+	return std::string(buf);
 }
 
 //--------------------------------------------------------------------------------
@@ -862,7 +862,7 @@ void DhtImpl::DumpBuckets()
 	int total = 0;
 	int total_cache = 0;
 	int lowest_span = 160;
-	do_log("Num buckets: %d. My DHT ID: %s", _buckets.size(), format_dht_id(_my_id));
+	do_log("Num buckets: %d. My DHT ID: %s", _buckets.size(), format_dht_id(_my_id).c_str());
 
 	for(uint i=0; i<_buckets.size(); i++) {
 		DhtBucket& bucket = *_buckets[i];
@@ -919,7 +919,7 @@ void DhtImpl::DumpTracked()
 	do_log("List of tracked torrents:");
 	for(uint i=0; i!=_peer_store.size(); i++) {
 		StoredContainer &sc = _peer_store[i];
-		do_log("%d: %s/%s: %d peers", i, format_dht_id(sc.info_hash), sc.file_name?sc.file_name:"", sc.peers.size());
+		do_log("%d: %s/%s: %d peers", i, format_dht_id(sc.info_hash).c_str(), sc.file_name?sc.file_name:"", sc.peers.size());
 	}
 	do_log("Total peers: %d", _peers_tracked);
 	do_log("Total torrents: %d", _peer_store.size());
@@ -947,7 +947,7 @@ void DhtImpl::SplitBucket(uint bucket_id)
 	DhtBucket &old_bucket = *_buckets[bucket_id];
 
 #if defined(_DEBUG_DHT)
-	debug_log("Splitting bucket %s (%d)", format_dht_id(old_bucket.first), old_bucket.span);
+	debug_log("Splitting bucket %s (%d)", format_dht_id(old_bucket.first).c_str(), old_bucket.span);
 #endif
 
 	if (old_bucket.span == 0)
@@ -982,8 +982,8 @@ void DhtImpl::SplitBucket(uint bucket_id)
 	}
 
 #if defined(_DEBUG_DHT)
-	debug_log("  old bucket: %s. %d peers.", format_dht_id(old_bucket.first), nold);
-	debug_log("  new bucket: %s. %d peers.", format_dht_id(new_bucket.first), nnew);
+	debug_log("  old bucket: %s. %d peers.", format_dht_id(old_bucket.first).c_str(), nold);
+	debug_log("  new bucket: %s. %d peers.", format_dht_id(new_bucket.first).c_str(), nnew);
 #endif
 
 	// Sort replacement peers to the right bucket
@@ -1202,7 +1202,7 @@ void DhtImpl::UpdateError(const DhtPeerID &id, bool force_remove)
 #ifdef _DEBUG_DHT
 		debug_log("node %s (id: %s) failed"
 			, print_sockaddr(p->id.addr).c_str()
-			, format_dht_id(p->id.id));
+			, format_dht_id(p->id.id).c_str());
 #endif
 
 		// rtt is set to INT_MAX until we receive the first response from this node
@@ -1905,8 +1905,8 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 
 #if defined(_DEBUG_DHT)
 		//TODO: use static temp and strcpy into it
-		char* temp = strdup(format_dht_id(info_hash_id));
-		debug_log("ANNOUNCE_PEER: id='%s', info_hash='%s', token='%s', host='%A'", format_dht_id(peerID.id), temp, hexify(message.token.b), &peerID.addr); //TODO: valgrind fishiness
+		char* temp = strdup(format_dht_id(info_hash_id).c_str());
+		debug_log("ANNOUNCE_PEER: id='%s', info_hash='%s', token='%s', host='%A'", format_dht_id(peerID.id).c_str(), temp, hexify(message.token.b), &peerID.addr); //TODO: valgrind fishiness
 		free(temp);
 #endif
 
@@ -2025,9 +2025,9 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
 
 #if defined(_DEBUG_DHT)
-	char const* temp = format_dht_id(info_hash_id);
+	char const* temp = format_dht_id(info_hash_id).c_str();
 	debug_log("GET_PEERS: id='%s', info_hash='%s', token='%s'",
-			 format_dht_id(peerID.id), temp, hexify(ttoken.value));
+			 format_dht_id(peerID.id).c_str(), temp, hexify(ttoken.value));
 #endif
 
 	if (has_values) {
@@ -2086,7 +2086,7 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 
 #if defined(_DEBUG_DHT)
 	debug_log("Incoming FIND_NODE request, looking for: %s. Found %d peers."
-		, format_dht_id(target_id), n);
+		, format_dht_id(target_id).c_str(), n);
 #endif
 
 	sb("e");
@@ -2827,11 +2827,11 @@ void DhtImpl::DoBootstrap()
 }
 
 void DhtImpl::DoFindNodes(DhtID const& target,
-						  std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)
 {
 #if defined(_DEBUG_DHT)
-	debug_log("DoFindNodes: %s",format_dht_id(target));
+	debug_log("DoFindNodes: %s",format_dht_id(target).c_str());
 #endif
 
 	int flags = 0; // to do remove
@@ -4231,6 +4231,9 @@ void DhtLookupNodeList::InsertPeer(const DhtPeerID &id, const DhtID &target)
 	// Make space here?
 	memmove(&ep[1], &ep[0], sizeof(ep[0]) * (numNodes - i - 1));
 
+//	debug_log("InsertPeer id  %s", format_dht_id(id.id).c_str());
+//	debug_log("InsertPeer src %s", format_dht_id(source_peer.id).c_str());
+
 	ep->id = id;
 	ep->queried = QUERIED_NO;
 	ep->token.len = 0;
@@ -4238,6 +4241,7 @@ void DhtLookupNodeList::InsertPeer(const DhtPeerID &id, const DhtID &target)
 	ep->cas = 0;
 	memset(ep->client, 0, sizeof(ep->client));
 	ep->version = 0;
+	// ep->source_peer = source_peer;
 }
 
 DhtLookupNodeList::~DhtLookupNodeList()
@@ -4748,7 +4752,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				nodes.b += node_size;
 
 #ifdef _DEBUG_DHT
-				debug_log("RECEIVED FIND_NODE: tid:%d candidate %s %s", Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id));
+				debug_log("RECEIVED FIND_NODE: tid:%d candidate %s %s", Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 //				bool is_my_node = peer.id == impl->_my_id;
 //				bool is_boot = impl->IsBootstrap(peer.addr);
 #endif
@@ -4762,6 +4766,8 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 					impl->Update(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
 
 					// Insert into my list...
+//					debug_log("we are looking for: target %s", format_dht_id(target));
+//					debug_log("we ask peer_id.id %s where is our target", format_dht_id(peer_id.id));
 					processManager.InsertPeer(peer, target);
 				}
 				num_nodes--;
@@ -5014,7 +5020,7 @@ void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 #ifdef _DEBUG_DHT
 debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
-			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id) , hexify(target_bytes));
+			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id).c_str() , hexify(target_bytes));
 #endif
 
 	// The find_node rpc
@@ -5053,7 +5059,7 @@ DhtProcessBase* FindNodeDhtProcess::Create(DhtImpl* pDhtImpl
 	, int flags)
 {
 #ifdef _DEBUG_DHT
-	debug_log("create find_node request: looking_for:%s", format_dht_id(target2));
+	debug_log("create find_node request: looking_for:%s", format_dht_id(target2).c_str());
 #endif
 
 	FindNodeDhtProcess* process = new FindNodeDhtProcess(pDhtImpl, dpm, target2
@@ -5733,7 +5739,7 @@ bool DhtImpl::Verify(byte const * signature, byte const * message, int message_l
 
 
 void DhtImpl::FindNode(	sha1_hash const& target,
-			 			std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+			 			std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 			 			std::function<void(std::string const& error_reason)> const& failed_fun)
 {
 
@@ -5748,7 +5754,7 @@ void DhtImpl::FindNode(	sha1_hash const& target,
 		// there is target node in the local t-bucket
 		// existingNode->rtt!=INT_MAX means that node is verified
 		// TO DO ? if (now - peer->first_seen < min_age)
-		success_fun(existingNode->id.addr.get_sockaddr_storage());
+		success_fun(existingNode->id.addr.get_sockaddr_storage(), sha1_hash(), sockaddr_storage());
 	}
 	else { // there is NO the target node in the local t-bucket
 		DhtID t_id(target);
@@ -6499,7 +6505,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 #endif
 		memset(&peer->client, 0, sizeof(peer->client));
 #ifdef _DEBUG_DHT
-		debug_log("Add node %s", format_dht_id(peer->id.id));
+		debug_log("Add node %s", format_dht_id(peer->id.id).c_str());
 #endif
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
@@ -6666,7 +6672,7 @@ void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 
 #ifdef _DEBUG_DHT
 					debug_log("RECEIVED FindNodeEventualy: tid:%d candidate %s %s", Read32(message.transactionID.b),
-							  print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id));
+							  print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 //				bool is_my_node = peer.id == impl->_my_id;
 //				bool is_boot = impl->IsBootstrap(peer.addr);
 #endif
@@ -6683,9 +6689,10 @@ void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 						if(peer.id == target)
 						{
 #ifdef _DEBUG_DHT
-							debug_log("FindNodeEventualy found target %s %s", format_dht_id(target), print_sockaddr(peer.addr).c_str());
+							debug_log("FindNodeEventualy found target %s %s", format_dht_id(target).c_str(), print_sockaddr(peer.addr).c_str());
 #endif
 							found_peer = peer;
+							source_peer = peer_id;
 							Abort();
 							return;
 						}
@@ -6704,11 +6711,11 @@ DhtProcessBase* FindNodeEventualyDhtProcess::Create(DhtImpl* pDhtImpl
 		, CallBackPointers &cbPointers
 		, int maxOutstanding
 		, int flags
-		, std::function<void(sockaddr_storage const& node_addr)> const& a_success_fun
+		, std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& a_success_fun
 		, std::function<void(std::string const& error_reason)> const& a_failed_fun)
 {
 #ifdef _DEBUG_DHT
-	debug_log("create eventaly find_node request: looking_for:%s", format_dht_id(target2));
+	debug_log("create eventaly find_node request: looking_for:%s", format_dht_id(target2).c_str());
 #endif
 
 	FindNodeEventualyDhtProcess* process = new FindNodeEventualyDhtProcess(pDhtImpl, dpm, target2
@@ -6739,14 +6746,18 @@ void FindNodeEventualyDhtProcess::CompleteThisProcess()
 	if(found_peer.addr._port != INVALID_PORT)
 	{
 #ifdef _DEBUG_DHT
-		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess success %s %s", format_dht_id(found_peer.id), print_sockaddr(found_peer.addr).c_str());
+		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess success:"
+						  "\n\tNode: %s %s  \n\tSource %s %s",
+					  format_dht_id(found_peer.id).c_str(), print_sockaddr(found_peer.addr).c_str(),
+					  format_dht_id(source_peer.id).c_str(), print_sockaddr(source_peer.addr).c_str()
+		);
 #endif
-		success_fun(found_peer.addr.get_sockaddr_storage());
+		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage());
 	}
 	else
 	{
 #ifdef _DEBUG_DHT
-		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess failed %s", format_dht_id(target));
+		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess failed %s", format_dht_id(target).c_str());
 #endif
 		failed_fun("not found");
 	}
@@ -6761,7 +6772,9 @@ void DhtLookupNodeList::DumpNodes()
 #ifdef _DEBUG_DHT
 	debug_log("Lookup nodes:");
 		for (int i = 0; i < size(); i++) {
-			debug_log("%d %s %s", i, format_dht_id(nodes[i].id.id), print_sockaddr(nodes[i].id.addr).c_str());
+			debug_log("%d %s %s",
+					  i,
+					  format_dht_id(nodes[i].id.id).c_str(), print_sockaddr(nodes[i].id.addr).c_str());
 		}
 #endif
 };

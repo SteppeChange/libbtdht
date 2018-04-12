@@ -148,7 +148,7 @@ public:
 		int flags = 0) = 0;
 
 	virtual void FindNode(sha1_hash const& target,
-						  std::function<void(sockaddr_storage const& node_addr)> const& success_fun,
+						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)  = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;
