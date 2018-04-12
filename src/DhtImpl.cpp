@@ -5693,7 +5693,10 @@ void DhtImpl::FindNode(	sha1_hash const& target,
 
 	DhtBucket &bucket = *_buckets[bucket_id];
 	DhtPeer* existingNode = bucket.FindNode(target);
-	if (existingNode) { // there is target node in the local t-bucket
+	if (existingNode && existingNode->rtt!=INT_MAX) {
+		// there is target node in the local t-bucket
+		// existingNode->rtt!=INT_MAX means that node is verified
+		// TO DO ? if (now - peer->first_seen < min_age)
 		success_fun(existingNode->id.addr.get_sockaddr_storage());
 	}
 	else { // there is NO the target node in the local t-bucket
