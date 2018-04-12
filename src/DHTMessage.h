@@ -20,6 +20,7 @@ limitations under the License.
 #include "Buffer.h"
 #include <utility> // for std::pair
 #include "sha1_hash.h"
+#include <string>
 
 enum
 {
@@ -48,10 +49,30 @@ enum DHTCommands
 	DHT_QUERY_VOTE,
 	DHT_QUERY_GET,
 	DHT_QUERY_PUT,
+	DHT_QUERY_PUNCH,
 #if USE_HOLEPUNCH
 	DHT_QUERY_PUNCH
 #endif
 };
+
+enum HolePunch
+{
+	HPUnknown = 0,
+	HPTest,
+	HPRelay,
+	HPRequest
+};
+
+inline std::string to_str(HolePunch p)
+{
+	switch(p)
+	{
+		case HPTest: return "test";
+		case HPRelay: return "relay";
+		case HPRequest: return "request";
+		default: return "unknown";
+	}
+}
 
 class BencodedDict;
 
@@ -141,7 +162,12 @@ public:
 	int64 sequenceNum;  // 'seq' for mutable put
 	int impliedPort;
 
-	// expected current sequence number for compare-and-swap operations
+	HolePunch punchType;
+	int punchId;
+	Buffer punchTarget_ip;
+	Buffer punchExecutor_ip;
+
+		// expected current sequence number for compare-and-swap operations
 	// if the blob we're about to overwrite has a different sequence number than
 	// this, the write must fail and be retried.
 	int64 cas;
@@ -162,8 +188,6 @@ public:
 	// determined that a "put" request was made.  Otherwise it is unassigned.
 	Buffer vBuf;
 
-	// this is the target IP address to punch a hole to for punch requests
-	Buffer target_ip;
 
 	// reply specific components
 	BencodedDict* replyDict;

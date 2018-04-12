@@ -1915,6 +1915,49 @@ public:
 				  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 				  std::function<void(std::string const& error_reason)> const& failed_fun)  override;
 
+/*  Hole Punch
+	Решение address restricted NAT (Punching packet) -
+	Нужен пакет для пробития ната.
+
+	Для пробития A->С нужны 2 пакета - туда и обратно.
+	Первый A->С, он вероятно не пройдет, но пробьет NAT в одну сторону.. (Проходимость пакета зависит от типа NAT, мы не знаем этого, и действуем исходя из худшего сценария).
+	Второй С->A пройдет если NAT не ассиметричный.
+
+	Есть ноды A, B, C.
+	Есть соединения AB и BC.
+	Необходимо установить виртуальное соединение AС.
+
+	A посылает С пакет - punch("test", punch_id), он вероятно сдохнет, но откроет NAT.
+ 				punch_id - уникальный id
+	A посылает B пакет - punch("relay", target_addres=A, executor_addr, punch_id).
+ 				target_address - ip:port A (кому слать punch_test)
+ 				executor_addr - ip:port C (соседа B), кому слать punch_request
+	B посылает пакет - punch("request",target_address, punch_id) на C
+	C посылает пакет - punch("test", punch_id) на target_address
+
+	NAT пробит.
+	Индикатором удачи будет получение punch_test( punch_id )
+
+
+ 		┌──────────> B (node relay) ────────────┐
+ 		│										│
+ 		│										│
+ 	punch_relay							punch_request
+ 		│										│
+ 		│										˅
+ A (node target) <──────punch_test────── C (node executor)
+
+*/
+
+	// hole punch NAT from me to target
+	virtual void punch_test(int punch_id, SockAddr const& target) override;
+	// this command to sends  punch_request from relay to executor_id
+	virtual void punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay) override;
+	// this command to sends  punch_test from executor_id to target
+	void punch_request(int punch_id, SockAddr const& target, SockAddr const& executor);
+
+	void punch(HolePunch type, int punch_id, SockAddr const& target, SockAddr const* executor, SockAddr const* relay);
+
 	void SetRate(int bytes_per_second) override;
 	void SetVersion(char const* client, int major, int minor) override;
 	void SetExternalIPCounter(ExternalIPCounter* ip) override;
@@ -1923,6 +1966,7 @@ public:
 	void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) override;
 	void SetEd25519SignCallback(Ed25519SignCallback* cb) override;
 	void SetPacketCallback(DhtPacketCallback* cb) override;
+	void SetPunchCallback(DhtPunchCallback* cb) override;
 
 	void AddNode(const SockAddr& addr, void* userdata, uint origin) override;
 	void AddBootstrapNode(SockAddr const& addr) override;
@@ -1966,6 +2010,7 @@ public:
 	Ed25519VerifyCallback* _ed25519_verify_callback;
 	Ed25519SignCallback* _ed25519_sign_callback;
 	ExternalIPCounter* _ip_counter;
+	DhtPunchCallback* _punch_callback;
 
 	// the buckets in the routing table. These buckets are ordered by their
 	// absolute location in the node ID space, _not_ by the distance from
@@ -2348,6 +2393,8 @@ public:
 
 	void SaveState();
 	void LoadState();
+
+
 };
 
 void LoadDHTFeed();

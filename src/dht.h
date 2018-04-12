@@ -79,6 +79,9 @@ typedef void Ed25519SignCallback(unsigned char *signature,
 		const unsigned char *message, size_t message_len,
 		const unsigned char *key);
 
+typedef void DhtPunchCallback(int punch_id, SockAddr const& source);
+
+
 /**
  * DHT public interface
  */
@@ -151,6 +154,9 @@ public:
 						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)  = 0;
 
+	virtual void punch_test(int punch_id, SockAddr const& target) = 0;
+	virtual void punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay) = 0;
+
 	virtual void SetId(byte new_id_bytes[20]) = 0;
 	virtual void Enable(bool enabled, int rate) = 0;
 
@@ -173,6 +179,7 @@ public:
 	virtual void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) = 0;
 	virtual void SetEd25519SignCallback(Ed25519SignCallback* cb) = 0;
 	virtual void AddBootstrapNode(SockAddr const& addr) = 0;
+	virtual void SetPunchCallback(DhtPunchCallback* cb) = 0;
 	
 	// userdata pointer is passed on to the AddNodeReponseCallback
 	virtual void AddNode(const SockAddr& addr, void* userdata, uint origin) = 0;

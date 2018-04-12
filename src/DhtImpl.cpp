@@ -259,10 +259,10 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_ping_batching = 1;
 	_enable_quarantine = true;
 
-	_dht_utversion[0] = 'U';
-	_dht_utversion[1] = 'T';
-	_dht_utversion[2] = 0;
-	_dht_utversion[3] = 0;
+	_dht_utversion[0] = 'V';
+	_dht_utversion[1] = 'N';
+	_dht_utversion[2] = 61;
+	_dht_utversion[3] = 61;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -2451,6 +2451,44 @@ bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID,
 	return AccountAndSend(peerID, sb.begin(), sb.length(), packetSize);
 }
 
+bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int packetSize)
+{
+	if (!_dht_enabled)
+		return false;
+
+#if defined(_DEBUG_DHT)
+	debug_log("incoming PUNCHING %s", to_str(message.punchType).c_str());
+#endif
+
+	if (_punch_callback && message.punchType == HPTest) {
+		_punch_callback(message.punchId, peerID.addr);
+	}
+
+	SockAddr punchTarget;
+	SockAddr punchExecutor;
+
+	if (message.punchType == HPRelay || message.punchType == HPRequest) {
+		bool ok = punchTarget.from_compact(message.punchTarget_ip.b, message.punchTarget_ip.len);
+		if (!ok) return false;
+		if (!punchTarget.isv4()) return false;
+	}
+
+	if (message.punchType == HPRelay) {
+		bool ok = punchExecutor.from_compact(message.punchExecutor_ip.b, message.punchExecutor_ip.len);
+		if (!ok) return false;
+		if (!punchExecutor.isv4()) return false;
+	}
+
+	if (message.punchType == HPRelay)
+		punch_request(message.punchId, punchTarget, punchExecutor);
+
+	if (message.punchType == HPRequest)
+		punch_test(message.punchId, punchTarget);
+
+	return true;
+}
+
+
 #if USE_HOLEPUNCH
 // when we get a punch request, send a tiny message to the specified
 // IP:port, in the hopes that our NAT will open up a pinhole to it
@@ -2541,9 +2579,7 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 		case DHT_QUERY_VOTE: return ProcessQueryVote(message, peerID, packetSize);
 		case DHT_QUERY_PUT: return ProcessQueryPut(message, peerID, packetSize);
 		case DHT_QUERY_GET: return ProcessQueryGet(message, peerID, packetSize);
-#if USE_HOLEPUNCH
 		case DHT_QUERY_PUNCH: return ProcessQueryPunch(message, peerID, packetSize);
-#endif
 		case DHT_QUERY_UNDEFINED: return false;
 	}
 
@@ -3120,6 +3156,12 @@ void DhtImpl::SetAddNodeResponseCallback(DhtAddNodeResponseCallback* cb)
 {
 	_add_node_callback = cb;
 }
+
+void DhtImpl::SetPunchCallback(DhtPunchCallback* cb)
+{
+	_punch_callback = cb;
+}
+
 
 /**
  NOTE:  Currently the way to detect a failure is that the params argument is NULL.
@@ -6778,3 +6820,72 @@ void DhtLookupNodeList::DumpNodes()
 		}
 #endif
 };
+
+
+void DhtImpl::punch_test(int punch_id, SockAddr const& target)
+{
+	punch(HPTest, punch_id, target, 0, 0);
+}
+
+void DhtImpl::punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay)
+{
+	punch(HPRelay, punch_id, target, &executor, &relay);
+}
+
+void DhtImpl::punch_request(int punch_id, SockAddr const& target, SockAddr const& executor)
+{
+	punch(HPRequest, punch_id, target, &executor, 0);
+}
+
+void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAddr const* executor, SockAddr const* relay)
+{
+	unsigned char buf[240];
+	smart_buffer sb(buf, sizeof(buf));
+
+	assert(target.isv4()); // to do there is smart_buffer& operator() (SockAddr const& value)
+
+	unsigned char target_ip[20];
+	memset(&target_ip, 0, sizeof(target_ip));
+	int tip_len = target.compact(target_ip, true);
+	assert(tip_len == 6);
+
+	unsigned char executor_ip[20];
+	memset(&executor_ip, 0, sizeof(executor_ip));
+	if(executor) {
+		int ex_len = executor->compact(executor_ip, true);
+		assert(ex_len == 6);
+	}
+
+
+#ifdef _DEBUG_DHT
+	debug_log("SEND PUNCH %s to %s", to_str(type).c_str(), print_sockaddr(target).c_str());
+#endif
+
+	sb("d");
+	sb("1:a");
+	sb("d");
+		if(type==HPTest) sb("3:cmd4:test"); // sub command
+		if(type==HPRelay) sb("3:cmd5:relay"); // sub command
+		if(type==HPRequest) sb("3:cmd7:request"); // sub command
+		if(type==HPRelay) sb("3:eip6:")(6, executor_ip); // executor ip
+		sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
+		sb("8:punch_id4:")(4, (unsigned char*)&punch_id);
+		if(type==HPRelay || type==HPRequest) sb("3:tip6:")(6, target_ip); // target ip
+	sb("e");
+	sb("1:q5:punch"); // command name
+	put_is_read_only(sb);
+	sb("1:t4:...."); // punch commands have tid '....' which is never used, since there is no reply
+	put_version(sb);
+	sb("1:y1:qe"); // DHT_QUERY
+	assert(sb.length() >= 0);
+
+	SockAddr destination;
+	if(type==HPTest)
+		destination = target;
+	if(type==HPRelay)
+		destination = *relay;
+	if(type==HPRequest)
+		destination = *executor;
+	SendTo(destination, buf, sb.length());
+}
+

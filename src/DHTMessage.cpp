@@ -68,6 +68,8 @@ void DHTMessage::Init()
 	error_message = NULL;
 	impliedPort = 0;
 	_bDictForUser = NULL;
+	punchType = HPUnknown;
+	punchId = 0;
 }
 
 /** This version of DecodeMessageData() can NOT extract a 'v' region
@@ -212,6 +214,25 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		sequenceNum = args->GetInt64("seq", 0);
 		cas = args->GetInt("cas", 0);
 	}
+	else if(strcmp(command,"punch") == 0){
+		dhtCommand = DHT_QUERY_PUNCH;
+		Buffer punchTypeStr;
+		punchTypeStr.b = (byte*)args->GetString("cmd", &punchTypeStr.len);
+		if(strcmp((char*)punchTypeStr.b,"test") == 0)
+			punchType = HPTest;
+		if(strcmp((char*)punchTypeStr.b,"relay") == 0)
+			punchType = HPRelay;
+		if(strcmp((char*)punchTypeStr.b,"request") == 0)
+			punchType = HPRequest;
+		Buffer punchIdStr;
+		punchIdStr.b = (byte*)args->GetString("punch_id", &punchIdStr.len);
+		assert(punchIdStr.len==sizeof(int));
+		punchId = *(reinterpret_cast<int*>(&(punchIdStr.b[0])));
+		if(punchType==HPRelay)
+			punchExecutor_ip.b = (byte*)args->GetString("eip", &punchExecutor_ip.len);
+		if(punchType==HPRequest || punchType==HPRelay)
+			punchTarget_ip.b = (byte*)args->GetString("tip", &punchTarget_ip.len);
+	}
 	else if (strcmp(command,"ping") == 0) {
 		dhtCommand = DHT_QUERY_PING;
 	}
@@ -285,9 +306,13 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	signature = src.signature;
 	region = src.region;
 	vBuf = src.vBuf;
-	target_ip = src.target_ip;
 	impliedPort = src.impliedPort;
 	cas = src.cas;
+
+	punchType = src.punchType;
+	punchId = src.punchId;
+	punchTarget_ip = src.punchTarget_ip;
+	punchExecutor_ip = src.punchExecutor_ip;
 
 	// Warning:  If this was set, it will still point to the dictionary
 	// created by the original _bDict object
