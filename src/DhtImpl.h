@@ -39,21 +39,6 @@ limitations under the License.
 #include "tailqueue.h"
 #include "get_microseconds.h"
 
-#if defined(_DEBUG_DHT_VERBOSE) && !defined _DEBUG_DHT
-#define _DEBUG_DHT
-#endif
-
-// for logging dht activity
-#if g_log_dht
-
-void dht_log(char const* fmt, ...);
-
-#else // g_log_dht
-
-inline void dht_log(char const* fmt, ...) {}
-
-#endif // g_log_dht
-
 class BencEntity;
 class DhtImpl;
 class DhtID;
@@ -1252,10 +1237,8 @@ class DhtProcessBase
 
 	public:
 
-#ifdef _DEBUG_DHT
 		unsigned int process_id() const;
 		virtual char const* name() const = 0;
-#endif
 
 		static DHTMessage dummyMessage;
 
@@ -1328,9 +1311,7 @@ class DhtLookupScheduler : public DhtProcessBase
 			, int flags
 			, int targets = KADEMLIA_K);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Lookup"; }
-#endif
+        char const* name() const override { return "Lookup"; }
 };
 
 //*****************************************************************************
@@ -1367,9 +1348,7 @@ class DhtBroadcastScheduler : public DhtProcessBase
 			, consumerCallbacks), num_targets(targets), outstanding(0)
 			{}
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Broadcast"; }
-#endif
+		char const* name() const override { return "Broadcast"; }
 };
 
 
@@ -1399,9 +1378,7 @@ class FindNodeDhtProcess : public DhtLookupScheduler //public DhtProcessBase
 			, int maxOutstanding
 			, int flags);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "FindNode"; }
-#endif
+    char const* name() const override { return "FindNode"; }
 };
 
 class FindNodeEventualyDhtProcess : public FindNodeDhtProcess
@@ -1423,9 +1400,7 @@ public:
 	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
 	virtual void CompleteThisProcess();
 
-#ifdef _DEBUG_DHT
-	virtual char const* name() const { return "FindNodeEventualy"; }
-#endif
+	virtual char const* name() const override { return "FindNodeEventualy"; }
 
 protected:
 	DhtPeerID found_peer;
@@ -1604,10 +1579,8 @@ class GetPeersDhtProcess : public DhtLookupScheduler
 			CallBackPointers &cbPointers,
 			int flags = 0,
 			int maxOutstanding = KADEMLIA_LOOKUP_OUTSTANDING);
-
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "GetPeers"; }
-#endif
+    
+        char const* name() const override { return "GetPeers"; }
 };
 
 //*****************************************************************************
@@ -1653,9 +1626,7 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 			cstr file_name,
 			int flags);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Announce"; }
-#endif
+		char const* name() const override { return "Announce"; }
 };
 
 //*****************************************************************************
@@ -1690,9 +1661,7 @@ class GetDhtProcess : public DhtLookupScheduler
 			int flags = 0,
 			int maxOutstanding = KADEMLIA_LOOKUP_OUTSTANDING);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Get"; }
-#endif
+		char const* name() const override { return "Get"; }
 };
 
 //*****************************************************************************
@@ -1729,9 +1698,8 @@ class PutDhtProcess : public DhtBroadcastScheduler
 			CallBackPointers &cbPointers,
 			int flags);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Put"; }
-#endif
+		char const* name() const override { return "Put"; }
+
 	protected:
 		bool _with_cas;
 		// records whether we've called the callback or not. We just want to
@@ -1762,9 +1730,7 @@ class ImmutablePutDhtProcess : public DhtBroadcastScheduler
 		static DhtProcessBase* Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 			byte const * data, size_t len, CallBackPointers &cbPointers);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "ImmutablePut"; }
-#endif
+		char const* name() const override { return "ImmutablePut"; }
 };
 
 //*****************************************************************************
@@ -1796,9 +1762,7 @@ class ScrapeDhtProcess : public GetPeersDhtProcess
 			, int maxOutstanding
 			, int flags);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Scrape"; }
-#endif
+		char const* name() const override { return "Scrape"; }
 };
 
 //*****************************************************************************
@@ -1826,9 +1790,7 @@ public:
 		, const DhtID &target2
 		, CallBackPointers &cbPointers, int voteValue);
 
-#ifdef _DEBUG_DHT
-		virtual char const* name() const { return "Vote"; }
-#endif
+		char const* name() const override { return "Vote"; }
 };
 
 #if !STABLE_VERSION || defined _DEBUG || defined BRANDED_MAC

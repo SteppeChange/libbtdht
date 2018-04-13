@@ -35,6 +35,16 @@ class ExternalIPCounter;
 class BencEntity;
 
 
+enum DHTLogLevel {
+    EDhtError,
+    EDhtTrace,
+    EDhtDebug,
+    EDhtVerbose,
+    EDhtInstrument,
+    EDhtStat
+};
+
+
 class DHTEvents {
 public:
 	virtual void dht_id_has_changed( sha1_hash new_id)= 0;
@@ -52,7 +62,7 @@ typedef int DhtPutCallback(void * ctx, std::vector<char>& buffer, int64& seq, So
 typedef int DhtPutDataCallback(void * ctx, std::vector<char> const& buffer, int64 seq, SockAddr src);
 typedef void DhtPutCompletedCallback(void * ctx);
 typedef void DhtGetCallback(void* ctx, std::vector<char> const& buffer);
-typedef void DhtLogCallback(char const* str);
+typedef void DhtLogCallback(int level, char const* str);
 
 // asks the client to save the DHT state
 typedef void DhtSaveCallback(const byte* buf, int len);

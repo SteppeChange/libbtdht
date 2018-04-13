@@ -57,9 +57,9 @@ int clamp(int v, int min, int max)
 	return v;
 }
 
-void log_to_stderr(char const* str)
+void log_to_stderr(int level, char const* str)
 {
-	fprintf(stderr, "DHT: %s\n", str);
+	fprintf(stderr, "DHT: [%d] %s\n", level, str);
 }
 
 static DhtLogCallback* g_logger = &log_to_stderr;
@@ -68,8 +68,6 @@ void set_log_callback(DhtLogCallback* log)
 {
 	g_logger = log;
 }
-
-#if g_log_dht
 
 uint prebitcmp(const uint32 *a, const uint32 *b, size_t size) { // Simple dirty "count bit prefix in common" function
 	uint result = 0;
@@ -87,23 +85,57 @@ uint prebitcmp(const uint32 *a, const uint32 *b, size_t size) { // Simple dirty 
 
 uint g_dht_peertype_count[IDht::DHT_ORIGIN_COUNT] = {0,0,0,0,0};
 
-void dht_log(char const* fmt, ...)
+
+// http://fuckingclangwarnings.com
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-security"
+template<typename ... Args>
+static void dht_log(DHTLogLevel level, char const* fmt, Args ... args)
 {
-	// TODO: log to a file or something
+    size_t size = snprintf(nullptr, 0, fmt, args ...) + 1;
+    std::unique_ptr<char[]> buf(new char[size]);
+    
+    snprintf(buf.get(), size, fmt, args ...);
+    std::string formatted(buf.get(), buf.get() + size - 1);
+    
+    (*g_logger)(static_cast<int>(level), formatted.c_str());
+}
+#pragma clang diagnostic pop
+
+template<typename ... Args>
+static void error_log(char const* fmt, Args ... args)
+{
+    dht_log(DHTLogLevel::EDhtError, fmt, args ...);
 }
 
-#endif // g_log_dht
-
-static void do_log(char const* fmt, ...)
+template<typename ... Args>
+static void trace_log(char const* fmt, Args ... args)
 {
-	va_list args;
-	va_start(args, fmt);
-	char buf[1000];
-	vsnprintf(buf, sizeof(buf), fmt, args);
+    dht_log(DHTLogLevel::EDhtTrace, fmt, args ...);
+}
 
-	(*g_logger)(buf);
+template<typename ... Args>
+static void debug_log(char const* fmt, Args ... args)
+{
+    dht_log(DHTLogLevel::EDhtDebug, fmt, args ...);
+}
 
-	va_end(args);
+template<typename ... Args>
+static void verbose_log(char const* fmt, Args ... args)
+{
+    dht_log(DHTLogLevel::EDhtVerbose, fmt, args ...);
+}
+
+template<typename ... Args>
+static void instr_log(char const* fmt, Args ... args)
+{
+    dht_log(DHTLogLevel::EDhtInstrument, fmt, args ...);
+}
+
+template<typename ... Args>
+static void stat_log(char const* fmt, Args ... args)
+{
+    dht_log(DHTLogLevel::EDhtStat, fmt, args ...);
 }
 
 // TODO: factor this into btutils sockaddr
@@ -162,47 +194,34 @@ std::string print_sockip(SockAddr const& addr)
 
 #ifdef _DEBUG_DHT_INSTRUMENT
 #define instrument_log(direction, command, type, size, tid) \
-		do_log("DHTI%c\t%" PRId64 "\t%s\t%c\t%lu\t%" PRIu32 "\n", direction, \
+		instr_log("DHTI%c\t%" PRId64 "\t%s\t%c\t%lu\t%" PRIu32 "\n", direction, \
 				get_milliseconds(), (command ? command : "unknown"), type, (size_t)size, tid)
 #else
 #define instrument_log(direction, command, type, size, tid)
 #endif
 
-#if defined(_DEBUG_DHT)
 
-static void debug_log(char const* fmt, ...)
-{
-	va_list args;
-	va_start(args, fmt);
-	char buf[1000];
-	vsnprintf(buf, sizeof(buf), fmt, args);
-	(*g_logger)(buf);
-	va_end(args);
-	// TODO: call callback or something
-}
-
-char *hexify(byte *b)
+std::string hexify(byte *b)
 {
 	char const static hex[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	static char buff[2*DHT_ID_SIZE+1];
+	static char hexify_buf[2*DHT_ID_SIZE+1];
 	for(int i=0; i!=DHT_ID_SIZE; i++) {
-		buff[i*2] = hex[b[i]>>4];
-		buff[i*2+1] = hex[b[i]&0xF];
+		hexify_buf[i*2] = hex[b[i]>>4];
+		hexify_buf[i*2+1] = hex[b[i]&0xF];
 	}
-	buff[2*DHT_ID_SIZE] = 0;
-	return buff;
+	hexify_buf[2*DHT_ID_SIZE] = 0;
+	return std::string(hexify_buf);
 }
 
-char const* print_version(char c[2], int version)
+std::string print_version(char c[2], int version)
 {
-	static char buf[100];
+	static char version_buf[100];
 	if (c[0] == 0)
-		snprintf(buf, sizeof(buf), "unknown");
+		snprintf(version_buf, sizeof(version_buf), "unknown");
 	else
-		snprintf(buf, sizeof(buf), "%c%c-%d", c[0], c[1], version);
-	return buf;
+		snprintf(version_buf, sizeof(version_buf), "%c%c-%d", c[0], c[1], version);
+	return std::string(version_buf);
 }
-#endif
 
 
 #define TRACE debug_log("TRACE fun:%s file:%s line:%d",__func__, __FILE__, __LINE__)
@@ -293,18 +312,15 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_ed25519_verify_callback = NULL;
 	_sha_callback = NULL;
 
-#ifdef _DEBUG_DHT
 	debug_log("DhtImpl() [bootstrap=%d]", _dht_bootstrap);
-
+#ifdef _DEBUG_DHT
 	_bootstrap_log = fopen("dht-bootstrap.log", "w+");
 	_lookup_log = fopen("dht-lookups.log", "w+");
-
 #endif
 }
 
 DhtImpl::~DhtImpl()
 {
-
 #ifdef _DEBUG_DHT
 	if (_lookup_log)
 		fclose(_lookup_log);
@@ -422,9 +438,7 @@ void DhtImpl::Enable(bool enabled, int rate)
 		_closing = !enabled;
 	}
 
-#ifdef _DEBUG_DHT
 	debug_log("Enable(enabled=%d, rate=%d) [bootstrap=%d]", enabled, rate, _dht_bootstrap);
-#endif
 }
 
 
@@ -475,10 +489,8 @@ void DhtImpl::ForceRefresh()
  */
 bool DhtImpl::CanAnnounce()
 {
-#ifdef _DEBUG_DHT
 	debug_log("CanAnnounce() [bootstrap=%d] = %d", _dht_bootstrap
 		, !(_dht_bootstrap != bootstrap_complete  || !_allow_new_job || _dht_peers_count < 32));
-#endif
 
 	if (_dht_bootstrap != bootstrap_complete  || !_allow_new_job || _dht_peers_count < 32)
 		return false;
@@ -509,20 +521,14 @@ void DhtImpl::GenerateId()
 	if(_ip_counter && _ip_counter->GetIPv4(externIp)){
 		DhtCalculateHardenedID(externIp, id_bytes);
 
-#if defined(_DEBUG_DHT)
-		debug_log("Generating a hardened node ID: \"%s\""
-			, hexify(id_bytes));
-#endif
+		debug_log("Generating a hardened node ID: \"%s\"", hexify(id_bytes).c_str());
 	} else {
 		uint32 *pTemp = (uint32 *) id_bytes;
 		// Generate a random ID
 		for(uint i=0; i<5; i++)
 			*pTemp++ = rand();
 
-#if defined(_DEBUG_DHT)
-		debug_log("Generating a random node ID: \"%s\""
-			, hexify(id_bytes));
-#endif
+		debug_log("Generating a random node ID: \"%s\"", hexify(id_bytes).c_str());
 	}
 	SetId(id_bytes);
 }
@@ -639,7 +645,7 @@ bool DhtImpl::AccountAndSend(const DhtPeerID &peer, const void *data, int len,
 	Account(DHT_BW_IN_REQ, packetSize);
 
 	if (len < 0) {
-		do_log("dht blob exceeds maximum size.");
+		error_log("dht blob exceeds maximum size.");
 		return false;
 	}
 	Account(DHT_BW_OUT_REPL, len);
@@ -684,9 +690,8 @@ void DhtImpl::SendTo(SockAddr const& peer, const void *data, uint len)
 			if (error == 0)
 				addr_name = buffer;
 		}
-#if defined(_DEBUG_DHT)
         debug_log("Resolving before send %s:%d", addr_name.c_str(), peer.get_port());
-#endif
+
 		struct addrinfo hints, *res0;
 		memset(&hints, 0, sizeof(hints));
 		hints.ai_family = PF_UNSPEC;
@@ -695,7 +700,7 @@ void DhtImpl::SendTo(SockAddr const& peer, const void *data, uint len)
 		hints.ai_flags = AI_PASSIVE;
 		int error = getaddrinfo(addr_name.c_str(), std::to_string(peer.get_port()).c_str(), &hints, &res0);
 		if (error) {
-			do_log("dht getaddrinfo fails: %d\n", error);
+			error_log("dht getaddrinfo fails: %d\n", error);
 			return;
 		}
 		SockAddr resolved_peer;
@@ -799,7 +804,7 @@ void DhtImpl::DumpAccountingInfo()
 {
 	DhtAccounting *acct = _dht_accounting;
 
-	do_log("Received: %u requests (%u B), %u replies (%u B), %u no quota (%u B), %u invalid (%u B)",
+	trace_log("Received: %u requests (%u B), %u replies (%u B), %u no quota (%u B), %u invalid (%u B)",
 		 uint(acct[DHT_BW_IN_REQ].count),
 		 uint(acct[DHT_BW_IN_REQ].size),
 		 uint(acct[DHT_BW_IN_REPL].count),
@@ -809,13 +814,12 @@ void DhtImpl::DumpAccountingInfo()
 		 uint(acct[DHT_BW_IN_TOTAL].count-acct[DHT_BW_IN_REQ].count-acct[DHT_BW_IN_REPL].count),
 		 uint(acct[DHT_BW_IN_TOTAL].size-acct[DHT_BW_IN_REQ].size-acct[DHT_BW_IN_REPL].size));
 
-	do_log("Sent: %u requests (%u), %u replies (%u)",
+	trace_log("Sent: %u requests (%u), %u replies (%u)",
 		uint(acct[DHT_BW_OUT_TOTAL].count-acct[DHT_BW_OUT_REPL].count),
 		uint(acct[DHT_BW_OUT_TOTAL].size-acct[DHT_BW_OUT_REPL].size),
 		uint(acct[DHT_BW_OUT_REPL].count),
 		uint(acct[DHT_BW_OUT_REPL].size));
 
-#if defined(_DEBUG_DHT)
 	char const* invalid_msg_names[] =
 	{
 		"DHT_INVALID_IPV6",
@@ -851,10 +855,9 @@ void DhtImpl::DumpAccountingInfo()
 	};
 	for (int i = DHT_INVALID_BASE+1; i < DHT_INVALID_END; i++) {
 		if (acct[i].count == 0) continue;
-		do_log("%s: %u occurances (%u Bytes)"
+		debug_log("%s: %u occurances (%u Bytes)"
 			, invalid_msg_names[i - DHT_INVALID_IPV6], uint(acct[i].count), uint(acct[i].size));
 	}
-#endif
 }
 
 void DhtImpl::DumpBuckets()
@@ -862,7 +865,7 @@ void DhtImpl::DumpBuckets()
 	int total = 0;
 	int total_cache = 0;
 	int lowest_span = 160;
-	do_log("Num buckets: %d. My DHT ID: %s", _buckets.size(), format_dht_id(_my_id).c_str());
+	trace_log("Num buckets: %d. My DHT ID: %s", _buckets.size(), format_dht_id(_my_id).c_str());
 
 	for(uint i=0; i<_buckets.size(); i++) {
 		DhtBucket& bucket = *_buckets[i];
@@ -887,7 +890,7 @@ void DhtImpl::DumpBuckets()
 		char const* marker = "";
 		if (bucket.TestForMatchingPrefix(_my_id)) marker = " <-- _my_id";
 
-		do_log("Bucket %2d: %.8X nodes: [%-8s] replacements: [%-8s], "
+		trace_log("Bucket %2d: %.8X nodes: [%-8s] replacements: [%-8s], "
 			"span: %d, unpinged: [%-8s]%s", i
 			, bucket.first.id[0], progress_bar + (8 - main_nodes)
 			, progress_bar + (8 - cache_nodes), bucket.span
@@ -909,20 +912,20 @@ void DhtImpl::DumpBuckets()
 //				 p->client.str(), p->rtt);
 		}
 	}
-	do_log("Total peers: %d (in replacement cache %d)", total, total_cache);
-	do_log("Deepest bucket: %d [target: %d]", 160 - lowest_span, 160 - _lowest_span);
+	trace_log("Total peers: %d (in replacement cache %d)", total, total_cache);
+	trace_log("Deepest bucket: %d [target: %d]", 160 - lowest_span, 160 - _lowest_span);
 	DumpAccountingInfo();
 }
 
 void DhtImpl::DumpTracked()
 {
-	do_log("List of tracked torrents:");
+	trace_log("List of tracked torrents:");
 	for(uint i=0; i!=_peer_store.size(); i++) {
 		StoredContainer &sc = _peer_store[i];
-		do_log("%d: %s/%s: %d peers", i, format_dht_id(sc.info_hash).c_str(), sc.file_name?sc.file_name:"", sc.peers.size());
+		trace_log("%d: %s/%s: %d peers", i, format_dht_id(sc.info_hash).c_str(), sc.file_name?sc.file_name:"", sc.peers.size());
 	}
-	do_log("Total peers: %d", _peers_tracked);
-	do_log("Total torrents: %d", _peer_store.size());
+	trace_log("Total peers: %d", _peers_tracked);
+	trace_log("Total torrents: %d", _peer_store.size());
 }
 
 DhtBucket *DhtImpl::CreateBucket(uint position)
@@ -946,9 +949,7 @@ void DhtImpl::SplitBucket(uint bucket_id)
 	DhtBucket &new_bucket = *CreateBucket(bucket_id + 1);
 	DhtBucket &old_bucket = *_buckets[bucket_id];
 
-#if defined(_DEBUG_DHT)
 	debug_log("Splitting bucket %s (%d)", format_dht_id(old_bucket.first).c_str(), old_bucket.span);
-#endif
 
 	if (old_bucket.span == 0)
 		return;
@@ -981,10 +982,8 @@ void DhtImpl::SplitBucket(uint bucket_id)
 		}
 	}
 
-#if defined(_DEBUG_DHT)
 	debug_log("  old bucket: %s. %d peers.", format_dht_id(old_bucket.first).c_str(), nold);
 	debug_log("  new bucket: %s. %d peers.", format_dht_id(new_bucket.first).c_str(), nnew);
-#endif
 
 	// Sort replacement peers to the right bucket
 	for (DhtPeer **peer = &old_bucket.replacement_peers.first(); *peer;) {
@@ -1062,21 +1061,17 @@ void DhtImpl::SendPunch(SockAddr const& dst, SockAddr const& punchee)
 	punchee.compact(record + 6, true);
 	sha1_hash h = _sha_callback(record, 12);
 	if (_recent_punch_requests.test(h)) {
-#ifdef _DEBUG_DHT
 		debug_log("SUPPRESSED PUNCH REQUEST TO: %s -> %s"
 			, print_sockaddr(dst).c_str()
 			, print_sockaddr(punchee).c_str());
-#endif
 		return;
 	}
 
 	_recent_punch_requests.add(h);
 
-#ifdef _DEBUG_DHT
-	debug_log("SEND PUNCH REQUEST TO: %s -> %s"
+    debug_log("SEND PUNCH REQUEST TO: %s -> %s"
 		, print_sockaddr(dst).c_str()
 		, print_sockaddr(punchee).c_str());
-#endif
 
 	unsigned char target_ip[20];
 	int len = punchee.compact(target_ip, true);
@@ -1101,10 +1096,8 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 
 	DhtRequest *req = AllocateRequest(peer_id);
 
-#ifdef _DEBUG_DHT
 	debug_log("SEND PING(%d): %s", req->tid
 		, print_sockaddr(peer_id.addr).c_str());
-#endif
 
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes)("e1:q4:ping");
 	put_is_read_only(sb);
@@ -1114,7 +1107,7 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 	assert(sb.length() >= 0);
 	
 	if (sb.length() < 0) {
-		do_log("SendPing blob exceeds maximum size.");
+		error_log("SendPing blob exceeds maximum size.");
 		return NULL;
 	}
 	instrument_log('>', "ping", 'q', sb.length(), req->tid);
@@ -1153,10 +1146,8 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &peer_id) {
 
 	DhtRequest *req = AllocateRequest(peer_id);
 
-#ifdef _DEBUG_DHT
-	debug_log("SEND FIND_NODE ping transaction:%d addr:%s", req->tid
+    debug_log("SEND FIND_NODE ping transaction:%d addr:%s", req->tid
 		, print_sockaddr(peer_id.addr).c_str());
-#endif
 
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 	sb("6:target20:")(DHT_ID_SIZE, target_bytes);
@@ -1168,7 +1159,7 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &peer_id) {
 	assert(sb.length() >= 0);
 	
 	if (sb.length() < 0) {
-		do_log("SendFindNode blob exceeds maximum size.");
+		error_log("SendFindNode blob exceeds maximum size.");
 		return NULL;
 	}
 
@@ -1199,11 +1190,9 @@ void DhtImpl::UpdateError(const DhtPeerID &id, bool force_remove)
 		// Check if the peer is already in the bucket
 		if (id != p->id) continue;
 
-#ifdef _DEBUG_DHT
 		debug_log("node %s (id: %s) failed"
 			, print_sockaddr(p->id.addr).c_str()
 			, format_dht_id(p->id.id).c_str());
-#endif
 
 		// rtt is set to INT_MAX until we receive the first response from this node
 		if (++p->num_fail >= (p->rtt != INT_MAX ? FAIL_THRES : FAIL_THRES_NOCONTACT)
@@ -1708,9 +1697,7 @@ bool DhtImpl::ParseIncomingICMP(BencEntity &benc, const SockAddr& addr)
 
 	DhtRequest *req = LookupRequest(Read32(tid));
 	if (!req) {
-#if defined(_DEBUG_DHT)
-		debug_log("Unknown transaction ID %d", Read32(tid));
-#endif
+		error_log("Unknown transaction ID %d", Read32(tid));
 		return false;
 	}
 
@@ -1721,10 +1708,8 @@ bool DhtImpl::ParseIncomingICMP(BencEntity &benc, const SockAddr& addr)
 	// HMM: stats for ICMP errors?
 	//Account(DHT_BW_IN_REPL, pkt_size);
 
-#if defined(_DEBUG_DHT)
-	debug_log("Got ICMP error (rtt=%d ms) tid=%d"
+    error_log("Got ICMP error (rtt=%d ms) tid=%d"
 		, get_milliseconds() - req->time, Read32(tid));
-#endif
 
 	UnlinkRequest(req);
 
@@ -1896,19 +1881,13 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 
 	// read the token
 	if (!message.token.len) {
-#if defined(_DEBUG_DHT)
-		debug_log("Bad write token");
-#endif
+		error_log("Bad write token");
 		Account(DHT_INVALID_PQ_BAD_WRITE_TOKEN, packetSize);
 		return false;
 	}
 
-#if defined(_DEBUG_DHT)
-		//TODO: use static temp and strcpy into it
-		char* temp = strdup(format_dht_id(info_hash_id).c_str());
-		debug_log("ANNOUNCE_PEER: id='%s', info_hash='%s', token='%s', host='%A'", format_dht_id(peerID.id).c_str(), temp, hexify(message.token.b), &peerID.addr); //TODO: valgrind fishiness
-		free(temp);
-#endif
+	debug_log("ANNOUNCE_PEER: id='%s', info_hash='%s', token='%s', host='%A'",
+              format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(), hexify(message.token.b).c_str(), &peerID.addr);
 
 	// validate the token
 	if (!ValidateWriteToken(peerID, message.token.b)) {
@@ -2024,11 +2003,8 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	BuildFindNodesPacket(sb, info_hash_id, mtu - size, peerID.addr);
 	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
 
-#if defined(_DEBUG_DHT)
-	char const* temp = format_dht_id(info_hash_id).c_str();
 	debug_log("GET_PEERS: id='%s', info_hash='%s', token='%s'",
-			 format_dht_id(peerID.id).c_str(), temp, hexify(ttoken.value));
-#endif
+			 format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(), hexify(ttoken.value).c_str());
 
 	if (has_values) {
 		int left = mtu - (sb.length() + 10);
@@ -2079,15 +2055,9 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 	const uint16 mtu = GetUDP_MTU(peerID.addr);
 	assert(size <= mtu);
 
-#if defined(_DEBUG_DHT)
-	uint n =
-#endif
-		BuildFindNodesPacket(sb, target_id, mtu - size, peerID.addr);
-
-#if defined(_DEBUG_DHT)
+	uint n = BuildFindNodesPacket(sb, target_id, mtu - size, peerID.addr);
 	debug_log("Incoming FIND_NODE request, looking for: %s. Found %d peers."
 		, format_dht_id(target_id).c_str(), n);
-#endif
 
 	sb("e");
 	put_transaction_id(sb, message.transactionID);
@@ -2136,9 +2106,7 @@ bool DhtImpl::ProcessQueryPut(DHTMessage &message, DhtPeerID &peerID,
 
 	// read the token
 	if (!message.token.len) {
-#if defined(_DEBUG_DHT)
-		debug_log("Bad write token");
-#endif
+		error_log("Bad write token");
 		Account(DHT_INVALID_PQ_BAD_WRITE_TOKEN, packetSize);
 		return false;
 	}
@@ -2392,9 +2360,7 @@ bool DhtImpl::ProcessQueryVote(DHTMessage &message, DhtPeerID &peerID,
 
 	// read the token
 	if (!message.token.len) {
-#if defined(_DEBUG_DHT)
-		debug_log("Bad write token");
-#endif
+		error_log("Bad write token");
 		Account(DHT_INVALID_PQ_BAD_WRITE_TOKEN, packetSize);
 		return false;
 	}
@@ -2427,14 +2393,11 @@ bool DhtImpl::ProcessQueryVote(DHTMessage &message, DhtPeerID &peerID,
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
-bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID,
-		int packetSize) {
+bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packetSize) {
 	unsigned char buf[512];
 	smart_buffer sb(buf, sizeof(buf));
 
-#if defined(_DEBUG_DHT)
-		debug_log("PING");
-#endif
+	debug_log("PING");
 
 	sb("d");
 	AddIP(sb, message.id, peerID.addr);
@@ -2492,8 +2455,7 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 #if USE_HOLEPUNCH
 // when we get a punch request, send a tiny message to the specified
 // IP:port, in the hopes that our NAT will open up a pinhole to it
-bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID
-	, int packetSize)
+bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int packetSize)
 {
 	if (!_dht_enabled) return false;
 
@@ -2507,17 +2469,12 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID
 	dst.compact(record, true);
 	sha1_hash h = _sha_callback(record, 6);
 	if (_recent_punches.test(h)) {
-#ifdef _DEBUG_DHT
-		debug_log("SUPPRESSED PUNCH: %s"
-			, print_sockaddr(dst).c_str());
-#endif
+		debug_log("SUPPRESSED PUNCH: %s", print_sockaddr(dst).c_str());
 		return true;
 	}
 	_recent_punches.add(h);
 
-#if defined(_DEBUG_DHT)
 	debug_log("PUNCHING %s", print_sockaddr(dst).c_str());
-#endif
 
 	unsigned char buf[5];
 	smart_buffer sb(buf, sizeof(buf));
@@ -2602,9 +2559,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	}
 
 	if (!req) {
-#if defined(_DEBUG_DHT)
-		debug_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
-#endif
+		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
 		Account(DHT_INVALID_PR_UNKNOWN_TID, pkt_size);
 		return false;	// invalid transaction id?
 	}
@@ -2640,10 +2595,9 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Report the port we sent the packet to.
 	peerID.addr.set_port(req->peer.addr.get_port());
 
-#if defined(_DEBUG_DHT)
 	debug_log("Got reply (rtt=%d ms) tid=%d",
 		int32(get_milliseconds() - req->time), Read32(message.transactionID.b));
-#endif
+    
 #if g_log_dht
 	dht_log("dlok replytime:%u\n", get_milliseconds() - req->time);
 #endif
@@ -2684,12 +2638,11 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 bool DhtImpl::ProcessError(DhtPeerID& peerID, DHTMessage &message, int pkt_size,
 		DhtRequest *req) {
 	// Handle an error for one of our requests.
-#if defined(_DEBUG_DHT)
 	if (message.error_message == NULL)
-		debug_log("**** GOT ERROR (unknown error)");
+		error_log("**** GOT ERROR (unknown error)");
 	else
-		debug_log("**** GOT ERROR (%d) '%s'", message.error_code, message.error_message);
-#endif
+		error_log("**** GOT ERROR (%d) '%s'", message.error_code, message.error_message);
+
 	if (req != NULL) { // this may be a response to an existing request
 		return ProcessResponse(peerID, message, pkt_size, req);
 	}
@@ -2807,9 +2760,8 @@ void DhtImpl::DoBootstrap()
 
 	++_bootstrap_attempts;
 
-#ifdef _DEBUG_DHT
 	debug_log("start bootstrap");
-
+#ifdef _DEBUG_DHT
 	_bootstrap_start = get_milliseconds();
 	if (_bootstrap_log) {
 		fprintf(_bootstrap_log, "[0] start\n");
@@ -2866,9 +2818,7 @@ void DhtImpl::DoFindNodes(DhtID const& target,
 						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)
 {
-#if defined(_DEBUG_DHT)
-	debug_log("DoFindNodes: %s",format_dht_id(target).c_str());
-#endif
+	debug_log("DoFindNodes: %s", format_dht_id(target).c_str());
 
 	int flags = 0; // to do remove
 	int maxOutstanding = (flags & IDht::announce_non_aggressive)
@@ -3093,16 +3043,14 @@ void DhtImpl::ProcessCallback()
 		_dht_bootstrap_failed = 0;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
 
-#ifdef _DEBUG_DHT
 		debug_log("DhtImpl::ProcessCallback() [ bootstrap done (%d)]", _dht_bootstrap);
-
+#ifdef _DEBUG_DHT
 		if (_bootstrap_log)
 			fprintf(_bootstrap_log, "[%u] complete %u nodes\n\n\n"
 				, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 #endif
 
 	} else {
-
 		// bootstrapping failed. retry again soon.
 		// 15s, 30s, 1m, 2m, 4m etc.
 		// never wait more than 24 hours - 60 * 24 = 1440
@@ -3118,8 +3066,8 @@ void DhtImpl::ProcessCallback()
 			_dht_bootstrap = 60 * 60 * 24;
 		}
 
+        debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
 #ifdef _DEBUG_DHT
-		debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
 		if (_bootstrap_log)
 			fprintf(_bootstrap_log, "[%u] failed %u nodes\n\n\n"
 				, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
@@ -3219,10 +3167,10 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 	const int node_size = 4 + 2 + 20;
 	if (nodes.b && nodes.len % node_size == 0) {
 		uint num_nodes = nodes.len / node_size;
-		// Insert all peers into my internal list.
-#if defined(_DEBUG_DHT_VERBOSE)
+
+        // Insert all peers into my internal list.
 		debug_log("<-- adding %d new nodes", num_nodes);
-#endif
+
 		while (num_nodes != 0) {
 			DhtPeerID peer;
 
@@ -3280,9 +3228,7 @@ void DhtImpl::AddBootstrapNode(SockAddr const& addr)
 
 			if (addr != p->id.addr) continue;
 
-#ifdef _DEBUG_DHT
 			debug_log("found bootstrap node in routing table, purging");
-#endif
 
 			// remove the router from its bucket and move one node from the
 			// replacement cache
@@ -3307,9 +3253,8 @@ void DhtImpl::AddBootstrapNode(SockAddr const& addr)
 
 			if (addr != p->id.addr) continue;
 
-#ifdef _DEBUG_DHT
 			debug_log("found bootstrap node in replacement queue, purging");
-#endif
+
 			bucket.replacement_peers.unlinknext(peer);
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
@@ -3574,10 +3519,9 @@ void DhtImpl::Tick()
 		if (_dht_bootstrap == bootstrap_complete)
 		{
 			SaveState();
-#ifdef _DEBUG_DHT
+
 			debug_log("10 minute counter, saving DHT state to disk."
 				, _dht_peers_count, _dht_bootstrap);
-#endif
 		}
 	}
 
@@ -3596,7 +3540,7 @@ void DhtImpl::Tick()
 		double iqps = (t_inrequests - inrequests) / t;
 		double oqps = (t_outrequests - outrequests) / t;
 		double known = acct[DHT_BW_IN_KNOWN].count * 100.0 / acct[DHT_BW_IN_TOTAL].count;
-		do_log("QPS in: %d out: %d (known: %d%%)", (int)(iqps+0.5), (int)(oqps+0.5), (int)(known+0.5));
+		trace_log("QPS in: %d out: %d (known: %d%%)", (int)(iqps+0.5), (int)(oqps+0.5), (int)(known+0.5));
 
 		last = get_milliseconds();
 		inrequests = t_inrequests;
@@ -3866,7 +3810,6 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 	}
 #endif
 
-#if defined(_DEBUG_DHT)
 	if (message.version.len == 4) {
 		debug_log(" [%d.%d.%d.%d:%u] client version: %c%c %u"
 			, addr._sin6[12]
@@ -3887,7 +3830,7 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 			, addr.get_port()
 			);
 	}
-#endif
+
 	if (_dht_enabled)
 		return InterpretMessage(message, addr, len);
 
@@ -3960,9 +3903,7 @@ void DhtImpl::LoadState()
 
 	_load_callback(&base);
 
-#if defined(_DEBUG_DHT)
 	int num_loaded = 0;
-#endif
 
 	BencodedDict *dict = base.AsDict(&base);
 	if (dict) {
@@ -3986,12 +3927,10 @@ void DhtImpl::LoadState()
 			if (addr.from_compact(ip, ip_len)) {
 				_ip_counter->CountIP(addr);
 				
-#if defined(_DEBUG_DHT)
 				SockAddr tmp;
 				_ip_counter->GetIPv4(tmp);
 				debug_log("Loaded possible external IP \"%s\""
 					, print_sockaddr(addr).c_str());
-#endif
 			}
 		}
 
@@ -4008,18 +3947,14 @@ void DhtImpl::LoadState()
 					nodes += sizeof(PackedDhtPeer);
 					nodes_len -= sizeof(PackedDhtPeer);
 					Update(peer, IDht::DHT_ORIGIN_UNKNOWN, false);
-#if defined(_DEBUG_DHT)
 					++num_loaded;
-#endif
 				}
 			}
 		}
 	}
 
-#if defined(_DEBUG_DHT)
 	debug_log("Loaded %d nodes and ID \"%s\" from disk"
-		, num_loaded, hexify(_my_id_bytes));
-#endif
+		, num_loaded, hexify(_my_id_bytes).c_str());
 }
 
 int DhtImpl::GetNumPutItems()
@@ -4038,12 +3973,10 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 	_ip_counter->CountIP(addr, voter);
 
 	if (_ip_counter->GetIPv4(tempWinner) && !tempWinner.ip_eq(_lastLeadingAddress)) {
-
-#if defined(_DEBUG_DHT)
-		debug_log("External IP changed from: \"%s\" to \"%s\""
+		trace_log("External IP changed from: \"%s\" to \"%s\""
 			, print_sockaddr(_lastLeadingAddress).c_str()
 			, print_sockaddr(tempWinner).c_str());
-#endif
+
 		_lastLeadingAddress = tempWinner;
 
 		GenerateId();
@@ -4132,9 +4065,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 
 	DhtBucket &bucket = *_buckets[bucket_id];
 
-#if defined(_DEBUG_DHT)
 //	debug_log("Update: %s.", format_dht_id(id.id));
-#endif
 
 	assert(bucket.TestForMatchingPrefix(id.id));
 
@@ -4367,12 +4298,10 @@ void DhtProcessManager::Next()
 //*****************************************************************************
 DHTMessage DhtProcessBase::dummyMessage;
 
-#ifdef _DEBUG_DHT
 unsigned int DhtProcessBase::process_id() const
 {
 	return uintptr_t(this) + start_time;
 }
-#endif
 
 void DhtProcessBase::Abort()
 {
@@ -4388,15 +4317,12 @@ void DhtProcessBase::CompleteThisProcess()
 			, uint(get_milliseconds()), process_id(), name());
 #endif
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] COMPLETED total=%d", process_id()
-		, processManager.size());
+	debug_log("[%u] COMPLETED total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
 		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	// let the process manager know that this phase of the dht process is complete
 	// and to start the next phase of the process (or terminate if all phases are
@@ -4472,9 +4398,7 @@ void DhtLookupScheduler::Schedule()
 	if (impl->Closing() && time(NULL) - start_time >= 15) {
 		aborted = true;
 
-#if defined(_DEBUG_DHT_VERBOSE)
 		debug_log("[%u] Process ran for too long, aborting", process_id());
-#endif
 	}
 
 	if (aborted) {
@@ -4544,20 +4468,16 @@ void DhtLookupScheduler::Schedule()
 		++nodeIndex;
 	}
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] SCHEDULE total=%d outstanding=%d K=%d", process_id()
+	verbose_log("[%u] SCHEDULE total=%d outstanding=%d K=%d", process_id()
 		, processManager.size(), totalOutstandingRequests, K);
-
 	for (int i = 0; i < processManager.size(); ++i) {
 		if (i == nodeIndex) {
-			debug_log(" ---- DhtProcess end ----");
+			verbose_log(" ---- DhtProcess end ----");
 		}
-
-		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	// No outstanding requests. Means we're finished.
 	if (totalOutstandingRequests == 0){
@@ -4615,9 +4535,9 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	// If a "slow" problem, mark the node as slow and see if another query can be issued.
 	if (flags & PROCESS_AS_SLOW){
 		--numNonSlowRequestsOutstanding;
-#if defined(_DEBUG_DHT_VERBOSE)
-		debug_log("[%u] *** 1ST-TIMEOUT tid=%d", process_id(), req->tid);
-#endif
+        
+		verbose_log("[%u] *** 1ST-TIMEOUT tid=%d", process_id(), req->tid);
+
 #ifdef _DEBUG_DHT
 		if (impl->_lookup_log)
 			fprintf(impl->_lookup_log, "[%u] [%u] [%s]: 1ST-TIMEOUT %s\n"
@@ -4639,9 +4559,8 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
 		impl->UpdateError(peer_id, flags & ICMP_ERROR);
 
-#if defined(_DEBUG_DHT_VERBOSE)
-		debug_log("[%u] *** TIMEOUT tid=%d", process_id(), req->tid);
-#endif
+		verbose_log("[%u] *** TIMEOUT tid=%d", process_id(), req->tid);
+
 #ifdef _DEBUG_DHT
 		if (impl->_lookup_log)
 			fprintf(impl->_lookup_log, "[%u] [%u] [%s]: TIMEOUT %s\n"
@@ -4782,9 +4701,8 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		uint num_nodes = nodes.len / node_size;
 		if (nodes.b && nodes.len % node_size == 0) {
 			// Insert all peers into my internal list.
-#if defined(_DEBUG_DHT_VERBOSE)
-			debug_log("[%u] <-- adding %d new nodes", process_id(), num_nodes);
-#endif
+			verbose_log("[%u] <-- adding %d new nodes", process_id(), num_nodes);
+
 			while (num_nodes != 0) {
 				DhtPeerID peer;
 
@@ -4793,11 +4711,9 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				peer.addr.from_compact(nodes.b + DHT_ID_SIZE, 6);
 				nodes.b += node_size;
 
-#ifdef _DEBUG_DHT
 				debug_log("RECEIVED FIND_NODE: tid:%d candidate %s %s", Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 //				bool is_my_node = peer.id == impl->_my_id;
 //				bool is_boot = impl->IsBootstrap(peer.addr);
-#endif
 
 				// Check if it's identical to myself?
 				// Don't add myself to my internal list of peers.
@@ -4924,9 +4840,7 @@ void GetDhtProcess::ImplementationSpecificReplyProcess(void *userdata
 		dfnh->cas = message.sequenceNum;
 	}
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] <-- GET tid=%d", process_id(), Read32(message.transactionID.b));
-#endif
+	verbose_log("[%u] <-- GET tid=%d", process_id(), Read32(message.transactionID.b));
 }
 
 //*****************************************************************************
@@ -4975,18 +4889,16 @@ void DhtBroadcastScheduler::Schedule()
 		++index;
 	}
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] SCHEDULE total=%d outstanding=%d replied=%d", process_id()
+	verbose_log("[%u] SCHEDULE total=%d outstanding=%d replied=%d", process_id()
 		, processManager.size(), outstanding, numReplies);
 	for (int i = 0; i < processManager.size(); ++i) {
 		if (i == index) {
-			debug_log("  ---- DhtProcess end ----");
+			verbose_log("  ---- DhtProcess end ----");
 		}
-		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	// No outstanding requests. Means we're finished.
 	if (outstanding == 0)
@@ -5060,10 +4972,8 @@ void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	unsigned char buf[1500];
 	smart_buffer sb(buf, sizeof(buf));
 
-#ifdef _DEBUG_DHT
-debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
-			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id).c_str() , hexify(target_bytes));
-#endif
+    debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
+			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id).c_str(), hexify(target_bytes).c_str());
 
 	// The find_node rpc
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, impl->_my_id_bytes);
@@ -5076,7 +4986,7 @@ debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, lo
 
 	assert(sb.length() >= 0);
 	if (sb.length() < 0) {
-		do_log("DhtSendRPC blob exceeds maximum size.");
+		error_log("DhtSendRPC blob exceeds maximum size.");
 		return;
 	}
 
@@ -5100,9 +5010,8 @@ DhtProcessBase* FindNodeDhtProcess::Create(DhtImpl* pDhtImpl
 	, int maxOutstanding
 	, int flags)
 {
-#ifdef _DEBUG_DHT
-	debug_log("create find_node request: looking_for:%s", format_dht_id(target2).c_str());
-#endif
+	debug_log("create find_node request: looking_for:%s",
+              format_dht_id(target2).c_str());
 
 	FindNodeDhtProcess* process = new FindNodeDhtProcess(pDhtImpl, dpm, target2
 		, time(NULL), cbPointers, maxOutstanding, flags);
@@ -5154,27 +5063,21 @@ void GetPeersDhtProcess::CompleteThisProcess()
 	dht_log("GetPeersDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
 #endif
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] PRE-COMPACT total=%d", process_id()
-		, processManager.size());
+	verbose_log("[%u] PRE-COMPACT total=%d", process_id() , processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
+		verbose_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	processManager.CompactList();
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] COMPACT total=%d", process_id()
-		, processManager.size());
+	verbose_log("[%u] COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	DhtProcessBase::CompleteThisProcess();
 }
@@ -5263,7 +5166,7 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 	assert(sb.length() >= 0);
 	if (sb.length() < 0) {
-		do_log("DhtSendRPC blob exceeds maximum size");
+		error_log("DhtSendRPC blob exceeds maximum size");
 		return;
 	}
 
@@ -5370,7 +5273,7 @@ DhtProcessBase* AnnounceDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager 
 	AnnounceDhtProcess* process = new AnnounceDhtProcess(pDhtImpl, dpm, target2, time(NULL), cbPointers);
 
 	if(file_name){
-		int len = strlen(file_name);
+		size_t len = strlen(file_name);
 		if(len){
 			// The file name may (and mostly will) be larger than the 32 bytes of statically
 			// allocated buffer in ArgumenterValueInfo.  So use SetValueBytes() which will
@@ -5416,7 +5319,7 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 	assert(sb.length() >= 0);
 	if (sb.length() < 0) {
-		do_log("DhtSendRPC blob exceeds maximum size.");
+		error_log("DhtSendRPC blob exceeds maximum size.");
 		return;
 	}
 
@@ -5475,11 +5378,9 @@ GetDhtProcess::GetDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 	char* buf = (char*)this->_id;
 	memcpy(buf, pDhtImpl->_my_id_bytes, DHT_ID_SIZE);
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] NEW GET process", process_id());
-	debug_log("[%u] maxOutstandingLookupQueries=%d", process_id()
+	verbose_log("[%u] NEW GET process", process_id());
+	verbose_log("[%u] maxOutstandingLookupQueries=%d", process_id()
 		, maxOutstandingLookupQueries);
-#endif
 
 #if g_log_dht
 	dht_log("GetDhtProcess,instantiated,id,%d,time,%d\n", target.id[0], get_milliseconds());
@@ -5544,7 +5445,7 @@ void GetDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	assert(sb.length() >= 0);
 
 	if (sb.length() < 0) {
-		do_log("DhtSendRPC blob exceeds maximum size.");
+		error_log("DhtSendRPC blob exceeds maximum size.");
 		return;
 	}
 
@@ -5554,10 +5455,8 @@ void GetDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] --> GET %s tid=%d", process_id()
-		, hexify(targetAsID), transactionID);
-#endif
+	verbose_log("[%u] --> GET %s tid=%d", process_id(), hexify(targetAsID).c_str(), transactionID);
+
 	instrument_log('>', "get", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
 }
@@ -5568,34 +5467,27 @@ void GetDhtProcess::CompleteThisProcess()
 	dht_log("GetDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
 #endif
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] PRE-COMPACT total=%d", process_id()
-		, processManager.size());
+	verbose_log("[%u] PRE-COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	processManager.CompactList();
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] COMPACT total=%d", process_id()
-		, processManager.size());
+	verbose_log("[%u] COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
+		verbose_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
-			, print_version(processManager[i].client, processManager[i].version));
+			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
-#endif
 
 	if (processManager.size() < 8 && !aborted && retries++ < 2) {
 		// we got less than a bucket's worth of replies
 		// we obviously didn't get a good set of peers to query, so try again
-#if defined(_DEBUG_DHT_VERBOSE)
-		debug_log("[%u] Restarting process", process_id());
-#endif
+		verbose_log("[%u] Restarting process", process_id());
+
 		for (int i = 0; i < processManager.size(); ++i) {
 			// CompactList resets the queried state to QUERIED_NO, since we're
 			// going to restart we need to set the state back to REPLIED
@@ -5650,9 +5542,7 @@ PutDhtProcess::PutDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 	buf = (char*)this->_skey;
 	memcpy(buf, skey, 64);
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] NEW PUT process", process_id());
-#endif
+	verbose_log("[%u] NEW PUT process", process_id());
 
 #if g_log_dht
 	dht_log("PutDhtProcess,instantiated,id,%d,time,%d\n", target.id[0], get_milliseconds());
@@ -5720,9 +5610,7 @@ ImmutablePutDhtProcess::ImmutablePutDhtProcess(DhtImpl* pDhtImpl
 	memcpy(buf, pDhtImpl->_my_id_bytes, DHT_ID_SIZE);
 	_data.assign(data, data + data_len);
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] NEW IPUT process", process_id());
-#endif
+	verbose_log("[%u] NEW IPUT process", process_id());
 
 #if g_log_dht
 	dht_log("ImmutablePutDhtProcess,instantiated,id,%d,time,%d\n", target.id[0],
@@ -5883,7 +5771,7 @@ void PutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 	// send the query
 	if (len < 0) {
-		do_log("DHT put blob exceeds %i byte maximum size! blk size: %lu", buf_len,
+		error_log("DHT put blob exceeds %i byte maximum size! blk size: %lu", buf_len,
 				blk.size());
 		return;
 	}
@@ -5894,10 +5782,8 @@ void PutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] --> PUT %s tid=%d", process_id()
-		, hexify(this->_id), transactionID);
-#endif
+	verbose_log("[%u] --> PUT %s tid=%d", process_id(), hexify(this->_id).c_str(), transactionID);
+
 	instrument_log('>', "put", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, len);
 }
@@ -5929,9 +5815,7 @@ void PutDhtProcess::ImplementationSpecificReplyProcess(void *userdata
 		callbackPointers.putCompletedCallback = NULL;
 	}
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] <-- PUT tid=%d", process_id(), Read32(message.transactionID.b));
-#endif
+	verbose_log("[%u] <-- PUT tid=%d", process_id(), Read32(message.transactionID.b));
 }
 
 void PutDhtProcess::CompleteThisProcess()
@@ -5973,9 +5857,7 @@ void ImmutablePutDhtProcess::ImplementationSpecificReplyProcess(void *userdata, 
 		impl->UpdateError(peer_id, flags & ICMP_ERROR);
 	}
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] <-- PUT tid=%d", process_id(), Read32(message.transactionID.b));
-#endif
+	verbose_log("[%u] <-- PUT tid=%d", process_id(), Read32(message.transactionID.b));
 }
 
 void ImmutablePutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
@@ -6000,7 +5882,7 @@ void ImmutablePutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	
 	// send the query
 	if (len < 0) {
-		do_log("DHT put blob exceeds %i byte maximum size! blk size: %lu", buf_len,
+		error_log("DHT put blob exceeds %i byte maximum size! blk size: %lu", buf_len,
 				_data.size());
 		return;
 	}
@@ -6011,10 +5893,9 @@ void ImmutablePutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-#if defined(_DEBUG_DHT_VERBOSE)
-	debug_log("[%u] --> IPUT %s tid=%d", process_id()
-		, hexify(this->_id), transactionID);
-#endif
+	verbose_log("[%u] --> IPUT %s tid=%d", process_id()
+		, hexify(this->_id).c_str(), transactionID);
+    
 	instrument_log('>', "iput", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, len);
 }
@@ -6129,7 +6010,7 @@ void VoteDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 	assert(sb.length() >= 0);
 	if (sb.length() < 0) {
-		do_log("DhSendRPC blob exceeds maximum size");
+		error_log("DhSendRPC blob exceeds maximum size");
 		return;
 	}
 
@@ -6546,9 +6427,8 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->origin = candidateNode.origin;
 #endif
 		memset(&peer->client, 0, sizeof(peer->client));
-#ifdef _DEBUG_DHT
 		debug_log("Add node %s", format_dht_id(peer->id.id).c_str());
-#endif
+
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
 
@@ -6560,9 +6440,8 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		}
 #endif
 
-#if defined(_DEBUG_DHT)
 		debug_log("Routing table num_nodes=%d", pDhtImpl->_dht_peers_count);
-#endif
+
 		if (pout) *pout = peer;
 		return true;
 	}
@@ -6680,9 +6559,7 @@ bool ClientID::operator ==(const ClientID &c) const {
 void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 		void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags)
 {
-#ifdef _DEBUG_DHT
 	debug_log("FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess");
-#endif
 
 	{
 
@@ -6712,12 +6589,10 @@ void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 					peer.addr.from_compact(nodes.b + DHT_ID_SIZE, 6);
 					nodes.b += node_size;
 
-#ifdef _DEBUG_DHT
-					debug_log("RECEIVED FindNodeEventualy: tid:%d candidate %s %s", Read32(message.transactionID.b),
-							  print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
-//				bool is_my_node = peer.id == impl->_my_id;
-//				bool is_boot = impl->IsBootstrap(peer.addr);
-#endif
+					debug_log("RECEIVED FindNodeEventualy: tid:%d candidate %s %s",
+                              Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
+//				    bool is_my_node = peer.id == impl->_my_id;
+//				    bool is_boot = impl->IsBootstrap(peer.addr);
 
 					// Check if it's identical to myself?
 					// Don't add myself to my internal list of peers.
@@ -6730,9 +6605,9 @@ void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 
 						if(peer.id == target)
 						{
-#ifdef _DEBUG_DHT
-							debug_log("FindNodeEventualy found target %s %s", format_dht_id(target).c_str(), print_sockaddr(peer.addr).c_str());
-#endif
+							debug_log("FindNodeEventualy found target %s %s",
+                                      format_dht_id(target).c_str(), print_sockaddr(peer.addr).c_str());
+                            
 							found_peer = peer;
 							source_peer = peer_id;
 							Abort();
@@ -6756,9 +6631,8 @@ DhtProcessBase* FindNodeEventualyDhtProcess::Create(DhtImpl* pDhtImpl
 		, std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& a_success_fun
 		, std::function<void(std::string const& error_reason)> const& a_failed_fun)
 {
-#ifdef _DEBUG_DHT
-	debug_log("create eventaly find_node request: looking_for:%s", format_dht_id(target2).c_str());
-#endif
+	debug_log("create eventualy find_node request: looking_for:%s",
+              format_dht_id(target2).c_str());
 
 	FindNodeEventualyDhtProcess* process = new FindNodeEventualyDhtProcess(pDhtImpl, dpm, target2
 			, time(NULL), cbPointers, maxOutstanding, flags);
@@ -6787,20 +6661,18 @@ void FindNodeEventualyDhtProcess::CompleteThisProcess()
 
 	if(found_peer.addr._port != INVALID_PORT)
 	{
-#ifdef _DEBUG_DHT
 		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess success:"
 						  "\n\tNode: %s %s  \n\tSource %s %s",
 					  format_dht_id(found_peer.id).c_str(), print_sockaddr(found_peer.addr).c_str(),
 					  format_dht_id(source_peer.id).c_str(), print_sockaddr(source_peer.addr).c_str()
-		);
-#endif
+                  );
+        
 		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage());
 	}
 	else
 	{
-#ifdef _DEBUG_DHT
 		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess failed %s", format_dht_id(target).c_str());
-#endif
+        
 		failed_fun("not found");
 	}
 
@@ -6811,14 +6683,11 @@ void FindNodeEventualyDhtProcess::CompleteThisProcess()
 
 void DhtLookupNodeList::DumpNodes()
 {
-#ifdef _DEBUG_DHT
 	debug_log("Lookup nodes:");
-		for (int i = 0; i < size(); i++) {
-			debug_log("%d %s %s",
-					  i,
-					  format_dht_id(nodes[i].id.id).c_str(), print_sockaddr(nodes[i].id.addr).c_str());
-		}
-#endif
+    for (int i = 0; i < size(); i++) {
+		debug_log("%d %s %s",
+				  i, format_dht_id(nodes[i].id.id).c_str(), print_sockaddr(nodes[i].id.addr).c_str());
+	}
 };
 
 
