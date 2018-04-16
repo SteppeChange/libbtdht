@@ -48,6 +48,7 @@ enum DHTLogLevel {
 class DHTEvents {
 public:
 	virtual void dht_id_has_changed( sha1_hash new_id)= 0;
+	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr)=0;
 //	virtual ~DHTEvents() {};
 };
 

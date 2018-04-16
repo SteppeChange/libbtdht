@@ -2423,8 +2423,8 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	debug_log("incoming PUNCHING %s", to_str(message.punchType).c_str());
 #endif
 
-	if (_punch_callback && message.punchType == HPTest) {
-		_punch_callback(message.punchId, peerID.addr);
+	if (_dht_events && message.punchType == HPTest) {
+        _dht_events->dht_recv_punch_test(message.punchId, peerID.addr.get_sockaddr_storage());
 	}
 
 	SockAddr punchTarget;
