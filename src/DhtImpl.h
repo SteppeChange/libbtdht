@@ -1928,7 +1928,6 @@ public:
 	void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) override;
 	void SetEd25519SignCallback(Ed25519SignCallback* cb) override;
 	void SetPacketCallback(DhtPacketCallback* cb) override;
-	void SetPunchCallback(DhtPunchCallback* cb) override;
 
 	void AddNode(const SockAddr& addr, void* userdata, uint origin) override;
 	void AddBootstrapNode(SockAddr const& addr) override;
@@ -1972,7 +1971,6 @@ public:
 	Ed25519VerifyCallback* _ed25519_verify_callback;
 	Ed25519SignCallback* _ed25519_sign_callback;
 	ExternalIPCounter* _ip_counter;
-	DhtPunchCallback* _punch_callback;
 
 	// the buckets in the routing table. These buckets are ordered by their
 	// absolute location in the node ID space, _not_ by the distance from

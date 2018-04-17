@@ -47,7 +47,8 @@ enum DHTLogLevel {
 
 class DHTEvents {
 public:
-	virtual void dht_id_has_changed( sha1_hash new_id)= 0;
+	virtual void dht_id_has_changed( sha1_hash new_id) = 0;
+	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
 //	virtual ~DHTEvents() {};
 };
 
@@ -189,8 +190,7 @@ public:
 	virtual void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) = 0;
 	virtual void SetEd25519SignCallback(Ed25519SignCallback* cb) = 0;
 	virtual void AddBootstrapNode(SockAddr const& addr) = 0;
-	virtual void SetPunchCallback(DhtPunchCallback* cb) = 0;
-	
+
 	// userdata pointer is passed on to the AddNodeReponseCallback
 	virtual void AddNode(const SockAddr& addr, void* userdata, uint origin) = 0;
 	virtual bool CanAnnounce() = 0;
