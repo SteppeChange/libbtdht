@@ -39,9 +39,7 @@ enum DHTLogLevel {
     EDhtError,
     EDhtTrace,
     EDhtDebug,
-    EDhtVerbose,
-    EDhtInstrument,
-    EDhtStat
+    EDhtVerbose
 };
 
 

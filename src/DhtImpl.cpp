@@ -126,17 +126,6 @@ static void verbose_log(char const* fmt, Args ... args)
     dht_log(DHTLogLevel::EDhtVerbose, fmt, args ...);
 }
 
-template<typename ... Args>
-static void instr_log(char const* fmt, Args ... args)
-{
-    dht_log(DHTLogLevel::EDhtInstrument, fmt, args ...);
-}
-
-template<typename ... Args>
-static void stat_log(char const* fmt, Args ... args)
-{
-    dht_log(DHTLogLevel::EDhtStat, fmt, args ...);
-}
 
 // TODO: factor this into btutils sockaddr
 std::string print_sockaddr(SockAddr const& addr)
@@ -191,15 +180,6 @@ std::string print_sockip(SockAddr const& addr)
 #ifdef _MSC_VER
 #define PRIu32 "u"
 #endif
-
-#ifdef _DEBUG_DHT_INSTRUMENT
-#define instrument_log(direction, command, type, size, tid) \
-		instr_log("DHTI%c\t%" PRId64 "\t%s\t%c\t%lu\t%" PRIu32 "\n", direction, \
-				get_milliseconds(), (command ? command : "unknown"), type, (size_t)size, tid)
-#else
-#define instrument_log(direction, command, type, size, tid)
-#endif
-
 
 std::string hexify(byte *b)
 {
@@ -1042,61 +1022,13 @@ DhtRequest *DhtImpl::AllocateRequest(const DhtPeerID &peer_id)
 	return req;
 }
 
-#if USE_HOLEPUNCH
-// send a request to dst to ping punchee, in order for it to
-// open a pinhole.
-void DhtImpl::SendPunch(SockAddr const& dst, SockAddr const& punchee)
-{
-	unsigned char buf[120];
-	smart_buffer sb(buf, sizeof(buf));
-
-	assert(punchee.isv4());
-	assert(dst.isv4());
-
-	// see if we have this pair of nodes in the bloom filter
-	// already. If we do, we've already sent a punch request recently,
-	// and we should skip it this time.
-	byte record[12];
-	dst.compact(record, true);
-	punchee.compact(record + 6, true);
-	sha1_hash h = _sha_callback(record, 12);
-	if (_recent_punch_requests.test(h)) {
-		debug_log("SUPPRESSED PUNCH REQUEST TO: %s -> %s"
-			, print_sockaddr(dst).c_str()
-			, print_sockaddr(punchee).c_str());
-		return;
-	}
-
-	_recent_punch_requests.add(h);
-
-    debug_log("SEND PUNCH REQUEST TO: %s -> %s"
-		, print_sockaddr(dst).c_str()
-		, print_sockaddr(punchee).c_str());
-
-	unsigned char target_ip[20];
-	int len = punchee.compact(target_ip, true);
-	assert(len == 6);
-	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes)
-		("2:ip6:")(target_ip, 6)("e1:q5:punch");
-	put_is_read_only(sb);
-	sb("1:t4:....");
-	put_version(sb);
-	sb("1:y1:qe");
-	assert(sb.length() >= 0);
-	
-	// punch commands have tid '....' which is never used, sicne there is no reply
-	instrument_log('>', "punch", 'q', sb.length(), Read32((byte*)("....")));
-	SendTo(dst, buf, sb.length());
-}
-#endif // USE_HOLEPUNCH
-
 DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 	unsigned char buf[120];
 	smart_buffer sb(buf, sizeof(buf));
 
 	DhtRequest *req = AllocateRequest(peer_id);
 
-	debug_log("SEND PING(%d): %s", req->tid
+	trace_log(">>> ping(%d): %s", req->tid
 		, print_sockaddr(peer_id.addr).c_str());
 
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes)("e1:q4:ping");
@@ -1110,7 +1042,6 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 		error_log("SendPing blob exceeds maximum size.");
 		return NULL;
 	}
-	instrument_log('>', "ping", 'q', sb.length(), req->tid);
 	SendTo(peer_id.addr, buf, sb.length());
 	return req;
 }
@@ -1146,7 +1077,7 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &peer_id) {
 
 	DhtRequest *req = AllocateRequest(peer_id);
 
-    debug_log("SEND FIND_NODE ping transaction:%d addr:%s", req->tid
+    trace_log(">>> find_node refresh neighbours:%d addr:%s", req->tid
 		, print_sockaddr(peer_id.addr).c_str());
 
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes);
@@ -1169,7 +1100,6 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &peer_id) {
 			, uint(get_milliseconds()), print_sockaddr(peer_id.addr).c_str());
 #endif
 
-	instrument_log('>', "find_node", 'q', sb.length(), req->tid);
 	SendTo(peer_id.addr, buf, sb.length());
 	return req;
 }
@@ -1681,9 +1611,7 @@ bool DhtImpl::ParseIncomingICMP(BencEntity &benc, const SockAddr& addr)
 	if (!tid || tidlen != sizeof(uint32))
 		return false; // bad/missing tid
 
-#ifdef _DEBUG_DHT
-//	debug_log("%A: ICMP error, DHT message type:%c command:%s", &addr, *type, *type=='q'?dict->GetString("q"):"unknown");
-#endif
+	debug_log("%A: ICMP error, DHT message type:%c command:%s", &addr, *type, *type=='q'?dict->GetString("q"):"unknown");
 
 	DhtPeerID peer_id;
 	peer_id.addr = addr;
@@ -1921,7 +1849,6 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	sb("1:y1:re");
 
 	assert(sb.length() >= 0);
-	instrument_log('>', "announce_peer", 'r', sb.length(), Read32(message.transactionID.b));
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
@@ -2028,7 +1955,6 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 
 	assert(sb.length() >= 0 && sb.length() <= mtu);
 
-	instrument_log('>', "get_peers", 'r', sb.length(), Read32(message.transactionID.b));
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
@@ -2040,6 +1966,11 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 		return false;
 	}
 	CopyBytesToDhtID(target_id, message.target.b);
+
+	trace_log("<<< find_node transaction:%d, from :%s (id:%s)",
+			  Read32(message.transactionID.b),
+			  print_sockaddr(peerID.addr).c_str(),
+			  format_dht_id(peerID.id).c_str());
 
 	unsigned char buf[512];
 	smart_buffer sb(buf, sizeof(buf));
@@ -2066,7 +1997,6 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 
 	assert(sb.length() >= 0 && sb.length() <= mtu);
 
-	instrument_log('>', "find_node", 'r', sb.length(), Read32(message.transactionID.b));
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
@@ -2079,7 +2009,6 @@ void DhtImpl::send_put_response(smart_buffer& sb, Buffer& transaction_id,
 	sb("1:y1:re");
 	assert(sb.length() >= 0);
 
-	instrument_log('>', "put", 'r', sb.length(), Read32(transaction_id.b));
 	AccountAndSend(peerID, sb.begin(), sb.length(), packetSize);
 }
 
@@ -2095,7 +2024,6 @@ void DhtImpl::send_put_response(smart_buffer& sb, Buffer& transaction_id,
 	sb("1:y1:ee");
 	assert(sb.length() >= 0);
 
-	instrument_log('>', "put", 'r', sb.length(), Read32(transaction_id.b));
 	AccountAndSend(peerID, sb.begin(), sb.length(), packetSize);
 }
 
@@ -2341,7 +2269,6 @@ bool DhtImpl::ProcessQueryGet(DHTMessage &message, DhtPeerID &peerID,
 
 	assert(sb.length() >= 0 && sb.length() <= mtu);
 
-	instrument_log('>', "get", 'r', sb.length(), Read32(message.transactionID.b));
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
@@ -2389,7 +2316,6 @@ bool DhtImpl::ProcessQueryVote(DHTMessage &message, DhtPeerID &peerID,
 	assert(sb.length() >= 0 && sb.length() <= GetUDP_MTU(peerID.addr));
 
 	// Send the reply to the peer.
-	instrument_log('>', "vote", 'r', sb.length(), Read32(message.transactionID.b));
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
@@ -2410,7 +2336,6 @@ bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packe
 
 	assert(sb.length() >= 0);
 
-	instrument_log('>', "ping", 'r', sb.length(), Read32(message.transactionID.b));
 	return AccountAndSend(peerID, sb.begin(), sb.length(), packetSize);
 }
 
@@ -2419,9 +2344,11 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	if (!_dht_enabled)
 		return false;
 
-#if defined(_DEBUG_DHT)
-	debug_log("incoming PUNCHING %s", to_str(message.punchType).c_str());
-#endif
+	trace_log("<<< punch transaction:%d, from :%s (id:%s) type:%s",
+			  Read32(message.transactionID.b),
+			  print_sockaddr(peerID.addr).c_str(),
+			  format_dht_id(peerID.id).c_str(),
+			  to_str(message.punchType).c_str());
 
 	if (_dht_events && message.punchType == HPTest)
 		_dht_events->dht_recv_punch_test(message.punchId, peerID.addr.get_sockaddr_storage());
@@ -2556,6 +2483,11 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		Account(DHT_INVALID_PR_BAD_TID_LENGTH, pkt_size);
 		return false;
 	}
+
+	trace_log("<<< response transaction:%d, from :%s (id:%s)",
+			  Read32(message.transactionID.b),
+			  print_sockaddr(peerID.addr).c_str(),
+			  format_dht_id(peerID.id).c_str());
 
 	if (!req) {
 		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
@@ -2786,11 +2718,9 @@ void DhtImpl::DoBootstrap()
 
 	DhtProcessManager *dpm = new DhtProcessManager(ids, num, target);
 
-#if defined(_DEBUG_DHT)
 //	debug_log("DoFindNodes: %s",format_dht_id(target));
 //	for(uint i=0; i!=num; i++)
 //		debug_log(" %A", &ids[i]->addr);
-#endif
 
 	CallBackPointers cbPtrs;
 
@@ -4705,7 +4635,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				peer.addr.from_compact(nodes.b + DHT_ID_SIZE, 6);
 				nodes.b += node_size;
 
-				debug_log("RECEIVED FIND_NODE: tid:%d candidate %s %s", Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
+				debug_log("new candidate: tid:%d candidate %s %s", Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 //				bool is_my_node = peer.id == impl->_my_id;
 //				bool is_boot = impl->IsBootstrap(peer.addr);
 
@@ -4966,7 +4896,7 @@ void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	unsigned char buf[1500];
 	smart_buffer sb(buf, sizeof(buf));
 
-    debug_log("SEND FIND_NODE find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
+    trace_log(">>> find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
 			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id).c_str(), hexify(target_bytes).c_str());
 
 	// The find_node rpc
@@ -4990,7 +4920,6 @@ void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-	instrument_log('>', "find_node", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
 }
 
@@ -5170,7 +5099,6 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-	instrument_log('>', "get_peers", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
 }
 
@@ -5323,7 +5251,6 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-	instrument_log('>', "announce_peer", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
 }
 
@@ -5451,7 +5378,6 @@ void GetDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 	verbose_log("[%u] --> GET %s tid=%d", process_id(), hexify(targetAsID).c_str(), transactionID);
 
-	instrument_log('>', "get", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
 }
 
@@ -5778,7 +5704,6 @@ void PutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 	verbose_log("[%u] --> PUT %s tid=%d", process_id(), hexify(this->_id).c_str(), transactionID);
 
-	instrument_log('>', "put", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, len);
 }
 
@@ -5890,7 +5815,6 @@ void ImmutablePutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	verbose_log("[%u] --> IPUT %s tid=%d", process_id()
 		, hexify(this->_id).c_str(), transactionID);
     
-	instrument_log('>', "iput", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, len);
 }
 
@@ -6014,7 +5938,6 @@ void VoteDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
 #endif
 
-	instrument_log('>', "vote", 'q', sb.length(), transactionID);
 	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
 }
 
@@ -6719,10 +6642,7 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 		assert(ex_len == 6);
 	}
 
-
-#ifdef _DEBUG_DHT
-	debug_log("SEND PUNCH %s to %s", to_str(type).c_str(), print_sockaddr(target).c_str());
-#endif
+	trace_log(">>> punch %s to %s", to_str(type).c_str(), print_sockaddr(target).c_str());
 
 	sb("d");
 	sb("1:a");
