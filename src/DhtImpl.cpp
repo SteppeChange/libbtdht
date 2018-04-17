@@ -5274,7 +5274,7 @@ DhtProcessBase* AnnounceDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager 
 			// dynamically allocate a larger buffer if needed.
 			char buf[1024];
 			process->announceArgumenterPtr->enabled[a_name] =  true;
-			int numChars = snprintf((char*)buf, 1024, "%d:%s", len, file_name);
+			int numChars = snprintf((char*)buf, 1024, "%lu:%s", len, file_name);
 			process->announceArgumenterPtr->SetValueBytes(a_name, (byte*)buf, numChars);
 		}
 	}

@@ -1292,9 +1292,9 @@ class DhtLookupScheduler : public DhtProcessBase
 
 		int flags;
 
-		virtual void Schedule();
+		virtual void Schedule() override;
 		virtual void ImplementationSpecificReplyProcess(void *userdata
-			, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
+			, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
 		DhtFindNodeEntry* ProcessMetadataAndPeer(const DhtPeerID &peer_id
 			, DHTMessage &message, uint flags);
 		void IssueOneAdditionalQuery();
@@ -1302,7 +1302,7 @@ class DhtLookupScheduler : public DhtProcessBase
 
 	public:
 		virtual void OnReply(void*& userdata, const DhtPeerID &peer_id
-			, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
+			, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags) override;
 
 		DhtLookupScheduler(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 			, const DhtID &target2, time_t startTime
@@ -1334,11 +1334,11 @@ class DhtBroadcastScheduler : public DhtProcessBase
 		// the number of outstanding announces/puts to keep at any given time
 		int outstanding;
 
-		virtual void Schedule();
+		virtual void Schedule() override;
 
 	public:
 		void OnReply(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req
-			, DHTMessage &message, DhtProcessFlags flags);
+			, DHTMessage &message, DhtProcessFlags flags) override;
 
 		DhtBroadcastScheduler(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 			, const DhtID &target2, time_t startTime
@@ -1363,8 +1363,8 @@ class FindNodeDhtProcess : public DhtLookupScheduler //public DhtProcessBase
 
 		byte target_bytes[DHT_ID_SIZE]; // used to store the bytes of the target DhtID
 
-		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
-		virtual void CompleteThisProcess();
+		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
+		virtual void CompleteThisProcess() override;
 
 	public:
 
@@ -1397,8 +1397,8 @@ public:
 			, std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& a_success_fun
 			, std::function<void(std::string const& error_reason)> const& a_failed_fun);
 
-	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-	virtual void CompleteThisProcess();
+	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+	virtual void CompleteThisProcess() override;
 
 	virtual char const* name() const override { return "FindNodeEventualy"; }
 
@@ -1565,8 +1565,8 @@ class GetPeersDhtProcess : public DhtLookupScheduler
 		static const char * const ArgsNamesStr[]; // strings that correspond to the GetPeersRPC_Arguments enum
 		Argumenter* gpArgumenterPtr;
 
-		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
-		virtual void CompleteThisProcess();
+		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
+		virtual void CompleteThisProcess() override;
 
 	public:
 
@@ -1610,15 +1610,15 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 		static const char * const ArgsNamesStr[];
 		Argumenter* announceArgumenterPtr;
 
-		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
-		virtual void CompleteThisProcess();
+		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
+		virtual void CompleteThisProcess() override;
 
 	public:
 		AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const DhtID &target2
 			, time_t startTime, const CallBackPointers &consumerCallbacks);
 		~AnnounceDhtProcess();
-		virtual void Start();
+		virtual void Start() override;
 
 		static DhtProcessBase* Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 			const DhtID &target2,
@@ -1641,9 +1641,9 @@ class GetDhtProcess : public DhtLookupScheduler
 		// Keep a count of the number of times the process has been restarted to
 		// avoid a potential infinite loop
 		byte retries;
-		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
-		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-		virtual void CompleteThisProcess();
+		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
+		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+		virtual void CompleteThisProcess() override;
 
 	public:
 
@@ -1653,7 +1653,7 @@ class GetDhtProcess : public DhtLookupScheduler
 			, time_t startTime, const CallBackPointers &consumerCallbacks
 			, int maxOutstanding, int flags);
 
-		virtual bool Filter(DhtFindNodeEntry const& e);
+		virtual bool Filter(DhtFindNodeEntry const& e) override;
 
 		static DhtProcessBase* Create(DhtImpl* pImpl, DhtProcessManager &dpm,
 			const DhtID &target2,
@@ -1672,13 +1672,13 @@ class GetDhtProcess : public DhtLookupScheduler
 class PutDhtProcess : public DhtBroadcastScheduler
 {
 	protected:
-		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
-		virtual void CompleteThisProcess();
+		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
+		virtual void CompleteThisProcess() override;
 		std::vector<char> signature;
 		GetDhtProcess* getProc;
 
-		virtual bool Filter(DhtFindNodeEntry const& e);
+		virtual bool Filter(DhtFindNodeEntry const& e) override;
 
 	public:
 
@@ -1688,7 +1688,7 @@ class PutDhtProcess : public DhtBroadcastScheduler
 
 		PutDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const byte * pkey, const byte * skey, time_t startTime, const CallBackPointers &consumerCallbacks, int flags);
 		~PutDhtProcess();
-		virtual void Start();
+		virtual void Start() override;
 
 		void Sign(std::vector<char> & signature, std::vector<char> v, byte * skey, int64 seq);
 		
@@ -1710,11 +1710,11 @@ class PutDhtProcess : public DhtBroadcastScheduler
 class ImmutablePutDhtProcess : public DhtBroadcastScheduler
 {
 	protected:
-		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
-		virtual void CompleteThisProcess();
+		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+		virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
+		virtual void CompleteThisProcess() override;
 
-		virtual bool Filter(DhtFindNodeEntry const& e);
+		virtual bool Filter(DhtFindNodeEntry const& e) override;
 
 	public:
 
@@ -1725,7 +1725,7 @@ class ImmutablePutDhtProcess : public DhtBroadcastScheduler
 				const byte * data, size_t data_len, time_t startTime,
 				const CallBackPointers &consumerCallbacks);
 		~ImmutablePutDhtProcess();
-		virtual void Start();
+		virtual void Start() override;
 
 		static DhtProcessBase* Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 			byte const * data, size_t len, CallBackPointers &cbPointers);
@@ -1746,8 +1746,8 @@ class ScrapeDhtProcess : public GetPeersDhtProcess
 		bloom_filter downloaders;
 
 	protected:
-		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-		virtual void CompleteThisProcess();
+		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+		virtual void CompleteThisProcess() override;
 
 	public:
 		ScrapeDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
@@ -1776,15 +1776,15 @@ private:
 	int voteValue;
 
 protected:
-	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags);
-	virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID);
+	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
+	virtual void DhtSendRPC(const DhtFindNodeEntry &nodeInfo, const unsigned int transactionID) override;
 
 public:
 
 	VoteDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const DhtID &target2, time_t startTime, const CallBackPointers &consumerCallbacks);
 	virtual ~VoteDhtProcess(){}
 	void SetVoteValue(int value);
-	virtual void Start();
+	virtual void Start() override;
 
 	static DhtProcessBase* Create(DhtImpl* pImpl, DhtProcessManager &dpm
 		, const DhtID &target2
