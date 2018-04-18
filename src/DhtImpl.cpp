@@ -37,6 +37,7 @@ limitations under the License.
 #include <stdarg.h>
 #include <limits>
 #include <netdb.h>
+#include <memory>
 
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 const char MUTABLE_PAYLOAD_FORMAT[] = "3:seqi%" PRId64 "e1:v";
