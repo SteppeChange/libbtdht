@@ -1952,6 +1952,8 @@ public:
 	bool IsBootstrap(const SockAddr& addr);
 
 
+    // ipv6 support
+    SockAddr ipv4ipv6_resolve(SockAddr const& initial);
 	//--------------------------------------------------------------------------------
 
 

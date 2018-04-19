@@ -216,6 +216,63 @@ std::string format_dht_id(const DhtID &id)
 	return std::string(buf);
 }
 
+SockAddr DhtImpl::ipv4ipv6_resolve(SockAddr const& peer)
+{
+    UDPSocketInterface *socketMgr = (peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr;
+    // we cant address ipv4 ip from ipv6 network
+    if(peer.get_family() !=  socketMgr->GetBindAddr().get_family())
+    {
+        // resolve target address (peer) to bind interface family
+        sockaddr_storage sa = peer.get_sockaddr_storage();
+        std::string addr_name;
+        if (sa.ss_family == AF_INET6) {
+            char buffer[INET6_ADDRSTRLEN];
+            int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in6), buffer, sizeof(buffer), 0, 0,
+                                    NI_NUMERICHOST);
+            if (error == 0)
+                addr_name = buffer;
+                }
+        if (sa.ss_family == AF_INET) {
+            char buffer[INET_ADDRSTRLEN];
+            int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in), buffer, sizeof(buffer), 0, 0,
+                                    NI_NUMERICHOST);
+            if (error == 0)
+                addr_name = buffer;
+                }
+        
+        struct addrinfo hints, *res0;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = PF_UNSPEC;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_protocol = IPPROTO_UDP;
+        hints.ai_flags = AI_PASSIVE;
+        int error = getaddrinfo(addr_name.c_str(), std::to_string(peer.get_port()).c_str(), &hints, &res0);
+        if (error) {
+            error_log("dht getaddrinfo fails: %d\n", error);
+            return peer;
+        }
+        SockAddr resolved_peer;
+        for (struct addrinfo *i = res0; i != nullptr; i = i->ai_next) {
+            if (i->ai_family == AF_INET && socketMgr->GetBindAddr().isv4()) {
+                sockaddr_in *v4 = (sockaddr_in *) i->ai_addr;
+                resolved_peer = SockAddr(ntohl(v4->sin_addr.s_addr), ntohs(v4->sin_port));
+            }
+            if (i->ai_family == AF_INET6 && socketMgr->GetBindAddr().isv6()) {
+                sockaddr_in6 *v6 = (sockaddr_in6 *) i->ai_addr;
+                resolved_peer = SockAddr(v6->sin6_addr, ntohs(v6->sin6_port));
+            }
+        }
+        
+        debug_log("resolving ip family before sending %s -> %s", print_sockaddr(peer).c_str(), print_sockaddr(resolved_peer).c_str());
+        
+        return resolved_peer;
+    }
+    else
+        return peer;
+
+}
+
+
 //--------------------------------------------------------------------------------
 //
 //
@@ -650,57 +707,7 @@ void DhtImpl::SendTo(SockAddr const& peer, const void *data, uint len)
 	//Need replace by the new WinRT udp socket implementation
 	UDPSocketInterface *socketMgr = (peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr;
 	assert(socketMgr);
-    
-    // we cant address ipv4 ip from ipv6 network
-	if(peer.get_family() !=  socketMgr->GetBindAddr().get_family())
-	{
-		// resolve target address (peer) to bind interface family
-		sockaddr_storage sa = peer.get_sockaddr_storage();
-		std::string addr_name;
-		if (sa.ss_family == AF_INET6) {
-			char buffer[INET6_ADDRSTRLEN];
-			int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in6), buffer, sizeof(buffer), 0, 0,
-									NI_NUMERICHOST);
-			if (error == 0)
-				addr_name = buffer;
-		}
-		if (sa.ss_family == AF_INET) {
-			char buffer[INET_ADDRSTRLEN];
-			int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in), buffer, sizeof(buffer), 0, 0,
-									NI_NUMERICHOST);
-			if (error == 0)
-				addr_name = buffer;
-		}
-        debug_log("Resolving before send %s:%d", addr_name.c_str(), peer.get_port());
-
-		struct addrinfo hints, *res0;
-		memset(&hints, 0, sizeof(hints));
-		hints.ai_family = PF_UNSPEC;
-		hints.ai_socktype = SOCK_DGRAM;
-		hints.ai_protocol = IPPROTO_UDP;
-		hints.ai_flags = AI_PASSIVE;
-		int error = getaddrinfo(addr_name.c_str(), std::to_string(peer.get_port()).c_str(), &hints, &res0);
-		if (error) {
-			error_log("dht getaddrinfo fails: %d\n", error);
-			return;
-		}
-		SockAddr resolved_peer;
-		for (struct addrinfo *i = res0; i != nullptr; i = i->ai_next) {
-			if (i->ai_family == AF_INET && socketMgr->GetBindAddr().isv4()) {
-				sockaddr_in *v4 = (sockaddr_in *) i->ai_addr;
-				resolved_peer = SockAddr(ntohl(v4->sin_addr.s_addr), ntohs(v4->sin_port));
-			}
-			if (i->ai_family == AF_INET6 && socketMgr->GetBindAddr().isv6()) {
-				sockaddr_in6 *v6 = (sockaddr_in6 *) i->ai_addr;
-				resolved_peer = SockAddr(v6->sin6_addr, ntohs(v6->sin6_port));
-			}
-		}
-
-		socketMgr->Send(resolved_peer, (byte *) data, len);
-	}
-	else
-		socketMgr->Send(peer, (byte *) data, len);
-
+	socketMgr->Send(peer, (byte *) data, len);
 }
 
 void CopyBytesToDhtID(DhtID &id, const byte *b)
@@ -1048,12 +1055,12 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 }
 
 // sends a single find-node request
-DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &peer_id) {
+DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
 	unsigned char buf[1500];
 	smart_buffer sb(buf, sizeof(buf));
 
 	DhtID target;
-	int buck = GetBucket(peer_id.id);
+	int buck = GetBucket(unresolved_peer_id.id);
 
 	// pick the target for the lookup. If we're in the bucket that can
 	// split, use our ID as the target. We want to continuously try to find nodes
@@ -1076,6 +1083,9 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &peer_id) {
 	byte target_bytes[DHT_ID_SIZE];
 	DhtIDToBytes(target_bytes, target);
 
+    DhtPeerID peer_id = unresolved_peer_id;
+    peer_id.addr = ipv4ipv6_resolve(unresolved_peer_id.addr);
+    
 	DhtRequest *req = AllocateRequest(peer_id);
 
     trace_log(">>> find_node refresh neighbours:%d addr:%s", req->tid
@@ -2519,6 +2529,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
+        debug_log("Error: Respnse IP != Request IP %s %s",
+                  print_sockaddr(req->peer.addr).c_str(), print_sockaddr(peerID.addr).c_str());
 		return false;
 	}
 
@@ -4436,10 +4448,12 @@ void DhtLookupScheduler::IssueOneAdditionalQuery()
 */
 void DhtLookupScheduler::IssueQuery(int nodeIndex)
 {
-	DhtFindNodeEntry &nodeInfo = processManager[nodeIndex];
-	nodeInfo.queried = QUERIED_YES;
-	DhtRequest *req = impl->AllocateRequest(nodeInfo.id);
-	DhtSendRPC(nodeInfo, req->tid);
+	DhtFindNodeEntry &unresNodeInfo = processManager[nodeIndex];
+	unresNodeInfo.queried = QUERIED_YES;
+    DhtFindNodeEntry resNodeInfo = unresNodeInfo;
+    resNodeInfo.id.addr = impl->ipv4ipv6_resolve(resNodeInfo.id.addr);
+	DhtRequest *req = impl->AllocateRequest(resNodeInfo.id);
+	DhtSendRPC(resNodeInfo, req->tid);
 	req->_pListener = new DhtRequestListener<DhtProcessBase>(this, &DhtProcessBase::OnReply);
 	numNonSlowRequestsOutstanding++;
 	totalOutstandingRequests++;
@@ -6346,7 +6360,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->origin = candidateNode.origin;
 #endif
 		memset(&peer->client, 0, sizeof(peer->client));
-		debug_log("Add node %s", format_dht_id(peer->id.id).c_str());
+		debug_log("Add node %s %s", format_dht_id(peer->id.id).c_str(), print_sockaddr(peer->id.addr).c_str());
 
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
