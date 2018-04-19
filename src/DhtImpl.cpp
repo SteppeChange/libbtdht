@@ -2345,11 +2345,12 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	if (!_dht_enabled)
 		return false;
 
-	trace_log("<<< punch transaction:%d, from :%s (id:%s) type:%s",
-			  Read32(message.transactionID.b),
+	trace_log("<<< punch type:%s from :%s (id:%s)",
+//			  Read32(message.transactionID.b),
+              to_str(message.punchType).c_str(),
 			  print_sockaddr(peerID.addr).c_str(),
-			  format_dht_id(peerID.id).c_str(),
-			  to_str(message.punchType).c_str());
+			  format_dht_id(peerID.id).c_str()
+			  );
 
 	if (_dht_events && message.punchType == HPTest)
 		_dht_events->dht_recv_punch_test(message.punchId, peerID.addr.get_sockaddr_storage());
@@ -6643,7 +6644,20 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 		assert(ex_len == 6);
 	}
 
-	trace_log(">>> punch %s to %s", to_str(type).c_str(), print_sockaddr(target).c_str());
+    if(type==HPRelay)
+        trace_log(">>> punch %s to %s test target: %s executor: %s ", to_str(type).c_str(),
+                  print_sockaddr(*relay).c_str(),
+                  print_sockaddr(target).c_str(),
+                  print_sockaddr(*executor).c_str());
+    if(type==HPRequest)
+        trace_log(">>> punch %s to %s test target: %s",
+                  to_str(type).c_str(),
+                  print_sockaddr(*executor).c_str(),
+                  print_sockaddr(target).c_str());
+    if(type==HPTest)
+        trace_log(">>> punch %s to %s",
+                  to_str(type).c_str(),
+                  print_sockaddr(target).c_str());
 
 	sb("d");
 	sb("1:a");
