@@ -2775,6 +2775,9 @@ void DhtImpl::DoFindNodes(DhtID const& target,
 
 	DhtPeerID *ids[32];
 	int num = AssembleNodeList(target, ids, sizeof(ids)/sizeof(ids[0]));
+    
+    if(num==0)
+        error_log("DoFindNodes failed 0 AssembleNodeList");
 
 	DhtProcessManager *dpm = new DhtProcessManager(ids, num, target);
 
