@@ -5620,7 +5620,9 @@ void DhtImpl::FindNode(	sha1_hash const& target,
 		// there is target node in the local t-bucket
 		// existingNode->rtt!=INT_MAX means that node is verified
 		// TO DO ? if (now - peer->first_seen < min_age)
-		success_fun(existingNode->id.addr.get_sockaddr_storage(), sha1_hash(), sockaddr_storage());
+        sha1_hash empty_sha1;
+        empty_sha1.clear();
+		success_fun(existingNode->id.addr.get_sockaddr_storage(), empty_sha1, sockaddr_storage());
 	}
 	else { // there is NO the target node in the local t-bucket
 		DhtID t_id(target);
