@@ -1085,6 +1085,10 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
 
     DhtPeerID peer_id = unresolved_peer_id;
     peer_id.addr = ipv4ipv6_resolve(unresolved_peer_id.addr);
+    if(peer_id.addr.get_port() == INVALID_PORT) {
+        error_log("SendFindNode fails, unresolved peer addr");
+        return NULL;
+    }
     
 	DhtRequest *req = AllocateRequest(peer_id);
 
@@ -2355,9 +2359,10 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	if (!_dht_enabled)
 		return false;
 
-	trace_log("<<< punch type:%s from :%s (id:%s)",
+	trace_log("<<< punch type:%s (%d) from :%s (id:%s)",
 //			  Read32(message.transactionID.b),
               to_str(message.punchType).c_str(),
+              message.punchId,
 			  print_sockaddr(peerID.addr).c_str(),
 			  format_dht_id(peerID.id).c_str()
 			  );
@@ -4452,6 +4457,10 @@ void DhtLookupScheduler::IssueQuery(int nodeIndex)
 	unresNodeInfo.queried = QUERIED_YES;
     DhtFindNodeEntry resNodeInfo = unresNodeInfo;
     resNodeInfo.id.addr = impl->ipv4ipv6_resolve(resNodeInfo.id.addr);
+    if(resNodeInfo.id.addr.get_port() == INVALID_PORT) {
+        error_log("IssueQuery fails, unresolved peer addr");
+        return;
+    }
 	DhtRequest *req = impl->AllocateRequest(resNodeInfo.id);
 	DhtSendRPC(resNodeInfo, req->tid);
 	req->_pListener = new DhtRequestListener<DhtProcessBase>(this, &DhtProcessBase::OnReply);
@@ -6646,33 +6655,38 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 	unsigned char buf[240];
 	smart_buffer sb(buf, sizeof(buf));
 
-	assert(target.isv4()); // to do there is smart_buffer& operator() (SockAddr const& value)
+    // to do there is smart_buffer& operator() (SockAddr const& value)
 
 	unsigned char target_ip[20];
 	memset(&target_ip, 0, sizeof(target_ip));
-	int tip_len = target.compact(target_ip, true);
-	assert(tip_len == 6);
+	size_t tip_len = target.compact(target_ip, true);
+	assert(tip_len == 6 || tip_len == 18);
 
 	unsigned char executor_ip[20];
 	memset(&executor_ip, 0, sizeof(executor_ip));
+    size_t ex_len = 0;
 	if(executor) {
-		int ex_len = executor->compact(executor_ip, true);
-		assert(ex_len == 6);
+		ex_len = executor->compact(executor_ip, true);
+		assert(ex_len == 6 || ex_len == 18);
 	}
 
     if(type==HPRelay)
-        trace_log(">>> punch %s to %s test target: %s executor: %s ", to_str(type).c_str(),
+        trace_log(">>> punch %s(%d) to %s test target: %s executor: %s ",
+                  to_str(type).c_str(),
+                  punch_id,
                   print_sockaddr(*relay).c_str(),
                   print_sockaddr(target).c_str(),
                   print_sockaddr(*executor).c_str());
     if(type==HPRequest)
-        trace_log(">>> punch %s to %s test target: %s",
+        trace_log(">>> punch %s(%d) to %s test target: %s",
                   to_str(type).c_str(),
+                  punch_id,
                   print_sockaddr(*executor).c_str(),
                   print_sockaddr(target).c_str());
     if(type==HPTest)
-        trace_log(">>> punch %s to %s",
+        trace_log(">>> punch %s(%d) to %s",
                   to_str(type).c_str(),
+                  punch_id,
                   print_sockaddr(target).c_str());
 
 	sb("d");
@@ -6681,10 +6695,16 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 		if(type==HPTest) sb("3:cmd4:test"); // sub command
 		if(type==HPRelay) sb("3:cmd5:relay"); // sub command
 		if(type==HPRequest) sb("3:cmd7:request"); // sub command
-		if(type==HPRelay) sb("3:eip6:")(6, executor_ip); // executor ip
+        if(type==HPRelay) { // executor ip
+            if(ex_len == 6) sb("3:eip6:")(6, executor_ip);
+            if(ex_len == 18) sb("3:eip18:")(18, executor_ip);
+        }
 		sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 		sb("8:punch_id4:")(4, (unsigned char*)&punch_id);
-		if(type==HPRelay || type==HPRequest) sb("3:tip6:")(6, target_ip); // target ip
+    if(type==HPRelay || type==HPRequest) { // target ip
+        if(tip_len == 6) sb("3:tip6:")(6, target_ip);
+        if(tip_len == 18) sb("3:tip18:")(18, target_ip);
+    }
 	sb("e");
 	sb("1:q5:punch"); // command name
 	put_is_read_only(sb);
@@ -6700,6 +6720,13 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 		destination = *relay;
 	if(type==HPRequest)
 		destination = *executor;
-	SendTo(destination, buf, sb.length());
+    
+    destination = ipv4ipv6_resolve(destination);
+    if(destination.get_port() == INVALID_PORT) {
+        error_log("punch fails, unresolved peer addr");
+        return;
+    }
+
+	SendTo(destination, buf, (uint)sb.length());
 }
 
