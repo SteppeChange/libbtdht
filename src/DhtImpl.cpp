@@ -2513,19 +2513,20 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	}
 	// Verify that the id contained in the message matches with the peer id.
 	if (message.dhtMessageType == DHT_RESPONSE) {
-		if(!message.id) {
+
+        if(!message.id) {
 			Account(DHT_INVALID_PQ_BAD_ID_FIELD, pkt_size);
 			return false; // bad/missing ID field
 		}
 
-//		When sending requests to bootstrap nodes (whose ID we don't know)
-//		we fill in a somewhat arbitrary ID. That causes this test to fail.
-//		This test doesn't seem terribly important anyway
-
-//		if (req->has_id && !(req->peer.id == peerID.id)) {
-//			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
-//			return false;
-//		}
+		if (req->has_id && !(req->peer.id == peerID.id)) {
+			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
+            error_log("Error: Response ID != Request ID %s %s",
+                      format_dht_id(peerID.id).c_str(),
+                      format_dht_id(req->peer.id).c_str());
+			return false;
+		}
+        
 	} else {
 		// error messages do not have a peer id field, so have to infer from request
 		peerID.id = req->peer.id;
@@ -2534,11 +2535,11 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
-        debug_log("Error: Respnse IP != Request IP %s %s",
+        error_log("Error: Respnse IP != Request IP %s %s",
                   print_sockaddr(req->peer.addr).c_str(), print_sockaddr(peerID.addr).c_str());
 		return false;
 	}
-
+    
 	Account(DHT_BW_IN_REPL, pkt_size);
 
 	// It's possible that the peer uses a different port # for outgoing packets.
