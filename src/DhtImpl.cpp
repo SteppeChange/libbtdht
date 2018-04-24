@@ -2519,7 +2519,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 			return false; // bad/missing ID field
 		}
 
-		if (req->has_id && !(req->peer.id == peerID.id)) {
+        // for bootstrup its wrong check because // _temp_nodes[c].id.id[4] = rand();
+		if (req->has_id && !IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
 			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
             error_log("Error: Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
