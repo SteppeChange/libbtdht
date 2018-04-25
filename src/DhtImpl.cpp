@@ -1982,7 +1982,7 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 	}
 	CopyBytesToDhtID(target_id, message.target.b);
 
-	trace_log("<<< find_node transaction:%d, from :%s (id:%s)",
+	trace_log("<<< find_node (%d), from :%s %s",
 			  Read32(message.transactionID.b),
 			  print_sockaddr(peerID.addr).c_str(),
 			  format_dht_id(peerID.id).c_str());
@@ -3117,7 +3117,7 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 		uint num_nodes = nodes.len / node_size;
 
         // Insert all peers into my internal list.
-		debug_log("<-- adding %d new nodes", num_nodes);
+        debug_log("refresh response: %d nodes", num_nodes);
 
 		while (num_nodes != 0) {
 			DhtPeerID peer;
@@ -3130,6 +3130,9 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 			// Check if it's identical to myself?
 			// Don't add myself to my internal list of peers.
 			if (peer.id != _my_id && peer.addr.get_port() != 0) {
+
+                debug_log("insert/update (%d) candidate %s %s",
+                          Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 
 				// Update the internal tables with this peer's information
 				// The contacted attribute is set to false because we haven't
@@ -4513,7 +4516,7 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
 		impl->UpdateError(peer_id, flags & ICMP_ERROR);
 
-		verbose_log("[%u] *** TIMEOUT tid=%d", process_id(), req->tid);
+		debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
 
 #ifdef _DEBUG_DHT
 		if (impl->_lookup_log)
@@ -4553,6 +4556,7 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	if (dfnh) { 
 		if (message.dhtMessageType == DHT_ERROR) {
 			dfnh->queried = QUERIED_ERROR;
+            debug_log("[%u] request reply = ERROR tid=%d", process_id(), req->tid);
 		} else {
 			dfnh->queried = QUERIED_REPLIED;
 		}
@@ -4655,7 +4659,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		uint num_nodes = nodes.len / node_size;
 		if (nodes.b && nodes.len % node_size == 0) {
 			// Insert all peers into my internal list.
-			verbose_log("[%u] <-- adding %d new nodes", process_id(), num_nodes);
+			debug_log("find_node response %d nodes", process_id(), num_nodes);
 
 			while (num_nodes != 0) {
 				DhtPeerID peer;
@@ -4665,7 +4669,6 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				peer.addr.from_compact(nodes.b + DHT_ID_SIZE, 6);
 				nodes.b += node_size;
 
-				debug_log("new candidate: tid:%d candidate %s %s", Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 //				bool is_my_node = peer.id == impl->_my_id;
 //				bool is_boot = impl->IsBootstrap(peer.addr);
 
@@ -4674,6 +4677,9 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				if (!(peer.id == impl->_my_id)
 					&& peer.addr.get_port() != 0
 					&& !impl->IsBootstrap(peer.addr)) {
+
+                    debug_log("insert/update (%d) candidate %s %s",
+                              Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 
 					impl->Update(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
 
@@ -4893,6 +4899,7 @@ void DhtBroadcastScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	else if(flags & ANY_ERROR){  // if ICMP or timeout error
 		DhtFindNodeEntry *dfnh = processManager.FindQueriedPeer(peer_id);
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
+        debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
 		impl->UpdateError(peer_id, flags & ICMP_ERROR);
 		outstanding--;
 		Schedule(); // put another request in flight since this peer is slow to reply (and may be dead)
