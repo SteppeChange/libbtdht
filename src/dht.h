@@ -22,7 +22,8 @@ limitations under the License.
  */
 
 #include <stddef.h> // for size_t
-#include <vector> 
+#include <vector>
+#include <list>
 #include "utypes.h"
 #include "sha1_hash.h"
 #include "sockaddr.h"
@@ -55,6 +56,7 @@ public:
 typedef void DhtVoteCallback(void *ctx, const byte *target, int const* votes);
 typedef void DhtHashFileNameCallback(void *ctx, const byte *info_hash, const byte *file_name);
 typedef void DhtAddNodesCallback(void *ctx, const byte *info_hash, const byte *peers, uint num_peers);
+typedef void DhtGetPeersCallback(void *ctx, const byte *info_hash, std::list<sha1_hash> const& peers);
 typedef void DhtAddNodeResponseCallback(void*& userdata, bool is_response, SockAddr const& addr);
 typedef void DhtScrapeCallback(void *ctx, const byte *target, int downloaders, int seeds);
 typedef int DhtPutCallback(void * ctx, std::vector<char>& buffer, int64& seq, SockAddr src);
@@ -158,6 +160,8 @@ public:
 		cstr file_name,
 		void *ctx,
 		int flags = 0) = 0;
+
+	virtual void ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb, void *ctx, int flags = 0) = 0;
 
 	virtual void FindNode(sha1_hash const& target,
 						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,

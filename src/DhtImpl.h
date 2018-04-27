@@ -116,9 +116,7 @@ int CompareDhtIDBytes(const DhtID &a, const DhtID &b, int num);
 void DhtIDToBytes(byte *b, const DhtID &id);
 
 struct StoredPeer {
-	byte ip[4];
-	byte port[2];
-	bool seed:1;
+	DhtID id;
 	time_t time;
 };
 
@@ -773,6 +771,7 @@ class IDhtRequestListener
 public:
 	virtual ~IDhtRequestListener(){}
 	virtual void Callback(const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags) = 0;
+	virtual char const* name() const = 0;
 };
 
 /**
@@ -791,6 +790,12 @@ public:
 	{
 		(_pListener->* _pCallback)(_userdata, peer_id, req, message, flags);
 	}
+
+	char const* name() const
+	{
+		return _pListener->name();
+	}
+
 protected:
 
 	T *_pListener;
@@ -994,6 +999,7 @@ class CallBackPointers
 
 		void* callbackContext;
 		IDhtProcessCallbackListener* processListener;
+		DhtGetPeersCallback* getPeersCallback;
 		DhtAddNodesCallback* addnodesCallback;
 		DhtScrapeCallback* scrapeCallback;
 		DhtVoteCallback* voteCallback;
@@ -1008,6 +1014,7 @@ class CallBackPointers
 inline CallBackPointers::CallBackPointers()
 	: callbackContext(NULL)
 	, processListener(NULL)
+	, getPeersCallback(NULL)
 	, addnodesCallback(NULL)
 	, scrapeCallback(NULL)
 	, voteCallback(NULL)
@@ -1951,6 +1958,7 @@ public:
 	void CountExternalIPReport( const SockAddr& addr, const SockAddr& voter );
 	bool IsBootstrap(const SockAddr& addr);
 
+	char const* name() const { return "DhtImpl"; }
 
     // ipv6 support
     SockAddr ipv4ipv6_resolve(SockAddr const& initial);
@@ -2226,7 +2234,7 @@ public:
 	void AddVoteToStore(smart_buffer& sb, DhtID& target
 		, SockAddr const& addr, int vote);
 
-	void AddPeerToStore(const DhtID &info_hash, cstr file_name, const SockAddr& addr, bool seed);
+	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer);
 
 	void ExpirePeersFromStore(time_t expire_before);
 
@@ -2309,7 +2317,7 @@ public:
 
 	void DoScrape(const DhtID &target, DhtScrapeCallback *callb, void *ctx, int flags = 0);
 
-	void ResolveName(DhtID const& target, DhtHashFileNameCallback* callb, void *ctx, int flags = 0);
+	void ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb, void *ctx, int flags = 0);
 
 	void DoAnnounce(const DhtID &target,
 		DhtAddNodesCallback *callb,

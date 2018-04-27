@@ -1487,12 +1487,8 @@ void DhtImpl::AddVoteToStore(smart_buffer& sb, DhtID& target
 #define new new(__FILE__,__LINE__)
 #endif //_DEBUG_MEM_LEAK
 
-void DhtImpl::AddPeerToStore(const DhtID &info_hash, cstr file_name, const SockAddr& addr, bool seed)
+void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer)
 {
-	// TODO: v6
-	assert(addr.isv4());
-	if (!addr.isv4())
-		return;
 
 	std::vector<StoredContainer>::iterator it = GetStorageForID(info_hash);
 	StoredContainer *sc = NULL;
@@ -1510,16 +1506,11 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, cstr file_name, const SockA
 		sc->file_name = (char*)malloc(MAX_FILE_NAME_LENGTH);
 	}
 
-	strncpy(sc->file_name, file_name?file_name:"\0", MAX_FILE_NAME_LENGTH);
-
 	// Check if the peer is already in the peer list.
 	for (uint j=0; j != sc->peers.size(); ++j) {
 		StoredPeer &sp = sc->peers[j];
-		SockAddr spaddr;
-		spaddr.from_compact(sp.ip, 6);
-		if (addr == spaddr) {
+		if (announsed_peer == sp.id) {
 			sp.time = time(NULL);
-			sp.seed = seed;
 			return;
 		}
 	}
@@ -1528,9 +1519,8 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, cstr file_name, const SockA
 		return;
 
 	StoredPeer sp;
-	addr.compact(sp.ip, true);
 	sp.time = time(NULL);
-	sp.seed = seed;
+	sp.id = announsed_peer;
 	sc->peers.push_back(sp);
 	_peers_tracked++;
 }
@@ -1845,9 +1835,7 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 		return false;
 	}
 
-	SockAddr addr2 = peerID.addr;
-	addr2.set_port(message.impliedPort ? peerID.addr.get_port() : message.portNum);
-	AddPeerToStore(info_hash_id, (cstr)message.filename.b, addr2, message.seed);
+	AddPeerToStore(info_hash_id, peerID.id);
 
 #if USE_DHTFEED
 	if (_sett.collect_dht_feed) {
@@ -1874,7 +1862,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 
 	DhtID info_hash_id;
 	sha1_hash ttoken;
-	const int num_peers = 100;// maximum number of peers to return; much more than this won't fit in an MTU
+	const int num_peers = 20;// maximum number of peers to return; much more than this won't fit in an MTU
 
 	if (!message.infoHash.b) {
 		Account(DHT_INVALID_PQ_GP_BAD_INFO_HASH, packetSize);
@@ -1900,24 +1888,6 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 
 	const std::vector<StoredPeer> *sc = GetPeersFromStore(info_hash_id
 			, &file_name, num_peers);
-
-	if (sc != NULL && message.scrape) {
-		// scrape instead of return peers
-		bloom_filter seeds(2048, 2);
-		bloom_filter downloaders(2048, 2);
-
-		for (int i = 0; i < sc->size(); ++i) {
-			StoredPeer const& p = (*sc)[i];
-			sha1_hash h = _sha_callback(p.ip, sizeof(p.ip));
-			if (p.seed) {
-				seeds.add(h);
-			}
-			else downloaders.add(h);
-		}
-
-		sb("4:BFpe256:")(256, downloaders.get_set());
-		sb("4:BFsd256:")(256, seeds.get_set());
-	}
 
 	GenerateWriteToken(&ttoken, peerID);
 	sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
@@ -1955,7 +1925,9 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 		if (n > 0) {
 			sb("6:valuesl");
 			for(uint i=0; i!=n; i++) {
-				sb("6:")(4, (*sc)[i].ip)(2, (*sc)[i].port);
+				DhtID const& sid = (*sc)[i].id;
+                debug_log("get_peers answer: found %s", format_dht_id(sid).c_str());
+				sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
 			}
 			sb("e");
 		}
@@ -2501,10 +2473,17 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		return false;
 	}
 
-	trace_log("<<< response transaction:%d, from :%s (id:%s)",
+	trace_log("<<< response (%d), from :%s id:%s process:%s",
 			  Read32(message.transactionID.b),
 			  print_sockaddr(peerID.addr).c_str(),
-			  format_dht_id(peerID.id).c_str());
+			  format_dht_id(peerID.id).c_str(),
+			  req == 0 ? "unknown" : req->_pListener->name());
+
+	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
+		int debug = 0;
+
+
+//	GetPeersDhtProcess : public DhtLookupScheduler : public DhtProcessBase // virtual char const* name() const = 0;
 
 	if (!req) {
 		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
@@ -2547,12 +2526,6 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Report the port we sent the packet to.
 	peerID.addr.set_port(req->peer.addr.get_port());
 
-	debug_log("Got reply (rtt=%d ms) tid=%d",
-		int32(get_milliseconds() - req->time), Read32(message.transactionID.b));
-    
-#if g_log_dht
-	dht_log("dlok replytime:%u\n", get_milliseconds() - req->time);
-#endif
 
 	UnlinkRequest(req);
 
@@ -2859,7 +2832,7 @@ void DhtImpl::DoScrape(const DhtID &target, DhtScrapeCallback *callb
 	dpm->Start();
 }
 
-void DhtImpl::ResolveName(DhtID const& target, DhtHashFileNameCallback* callb
+void DhtImpl::ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb
 	, void *ctx, int flags)
 {
 	int maxOutstanding = (flags & announce_non_aggressive)
@@ -2872,7 +2845,7 @@ void DhtImpl::ResolveName(DhtID const& target, DhtHashFileNameCallback* callb
 
 	CallBackPointers cbPtrs;
 	cbPtrs.callbackContext = ctx;
-	cbPtrs.filenameCallback = callb;
+	cbPtrs.getPeersCallback = callb;
 
 	DhtProcessBase* getPeersProc = GetPeersDhtProcess::Create(this, *dpm, target, cbPtrs, flags, maxOutstanding);
 	dpm->AddDhtProcess(getPeersProc);
@@ -2891,6 +2864,8 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 	void *ctx,
 	int flags)
 {
+	debug_log("DoAnnounce: %s", format_dht_id(target).c_str());
+
 	// announcing is a two stage process,
 	//  1) perform a get_peers dht search to build a list of nearist nodes
 	//  2) follow through with a broadcast stage to announce to the nearist nodes
@@ -3378,7 +3353,7 @@ int DhtImpl::CalculateLowestBucketSpan()
 void DhtImpl::Tick()
 {
 	// TODO: make these members. and they could probably be collapsed to 1
-	static int _5min_counter;
+	static int _1min_counter;
 	static int _10min_counter;
 	static int _4_sec_counter;
 
@@ -3434,10 +3409,10 @@ void DhtImpl::Tick()
 		return;
 
 	// Do these every 5 minutes.
-	if (++_5min_counter == 60 * 5) {
-		_5min_counter = 0;
+	if (++_1min_counter == 60 * 1) {
+		_1min_counter = 0;
 		RandomizeWriteToken();
-		ExpirePeersFromStore(time(NULL) - 30 * 60);
+		ExpirePeersFromStore(time(NULL) - 2 * 60);
 		_immutablePutStore.UpdateUsage(time(NULL));
 		_mutablePutStore.UpdateUsage(time(NULL));
 
@@ -4623,6 +4598,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 
 			int peers_size = values.size();
 			DHTPackedPeer *peers = (DHTPackedPeer*)malloc(sizeof(DHTPackedPeer) * peers_size);
+			std::list<sha1_hash> hpeers;
 			uint numpeer = 0;
 			for(uint i=0; i!=values.size(); i++) {
 				int len = values[i].len;
@@ -4631,6 +4607,11 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				if (len == 6) {
 					// libtorrrent / uTorrent style peer
 					peers[numpeer++] = *(DHTPackedPeer*)s;
+				} else if (len == 20) {
+					// steppechage
+					DhtID ann_id;
+					CopyBytesToDhtID(ann_id, s);
+					hpeers.push_back(ann_id.sha1());
 				} else if ((len % 6) == 0) {
 
 					// we need more space
@@ -4644,6 +4625,9 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 					}
 				}
 			}
+			if(callbackPointers.getPeersCallback)
+				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, hpeers);
+
 			if (numpeer != 0 && callbackPointers.addnodesCallback != NULL){
 #if g_log_dht
 				dht_log("DhtLookupScheduler,callback,id,%d,time,%d\n", target.id[0], get_milliseconds());
@@ -4659,7 +4643,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		uint num_nodes = nodes.len / node_size;
 		if (nodes.b && nodes.len % node_size == 0) {
 			// Insert all peers into my internal list.
-			debug_log("find_node response %d nodes", process_id(), num_nodes);
+			debug_log("lookup response has %d nodes", process_id(), num_nodes);
 
 			while (num_nodes != 0) {
 				DhtPeerID peer;
@@ -5019,22 +5003,20 @@ const char* const GetPeersDhtProcess::ArgsNamesStr[] =
 
 void GetPeersDhtProcess::CompleteThisProcess()
 {
-#if g_log_dht
-	dht_log("GetPeersDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
-#endif
+	debug_log("GetPeersDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
 
-	verbose_log("[%u] PRE-COMPACT total=%d", process_id() , processManager.size());
+	debug_log("[%u] PRE-COMPACT total=%d", process_id() , processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		verbose_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
+		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
 
 	processManager.CompactList();
 
-	verbose_log("[%u] COMPACT total=%d", process_id(), processManager.size());
+	debug_log("[%u] COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
@@ -5110,6 +5092,11 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	static const int bufLen = 1500;
 	char rpcArgsBuf[bufLen];
 	unsigned char buf[bufLen];
+
+	trace_log(">>> get_peers (%d), to_addr:%s, to_id:%s"
+		    , transactionID
+			, print_sockaddr(nodeInfo.id.addr).c_str()
+			, format_dht_id(nodeInfo.id.id).c_str());
 
 	smart_buffer sb(buf, bufLen);
 
@@ -5254,6 +5241,11 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	char rpcArgsBuf[bufLen];
 	unsigned char buf[bufLen];
 
+	trace_log(">>> announce_peer (%d), to_addr:%s, to_id:%s"
+		    , transactionID
+			, print_sockaddr(nodeInfo.id.addr).c_str()
+			, format_dht_id(nodeInfo.id.id).c_str());
+
 	// convert the token
 	ArgumenterValueInfo& argBuf = announceArgumenterPtr->GetArgumenterValueInfo(a_token);
 	char* b = (char*)argBuf.GetBufferPtr();
@@ -5385,6 +5377,11 @@ void GetDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	unsigned char buf[bufLen];
 	smart_buffer sb(buf, bufLen);
 
+	trace_log(">>> get (%d), to_addr:%s, to_id:%s"
+			, transactionID
+			, print_sockaddr(nodeInfo.id.addr).c_str()
+			, format_dht_id(nodeInfo.id.id).c_str());
+
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, (byte*)this->_id);
 
 	if (processManager.seq() > 0)
@@ -5420,22 +5417,20 @@ void GetDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 void GetDhtProcess::CompleteThisProcess()
 {
-#if g_log_dht
-	dht_log("GetDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
-#endif
+	debug_log("GetDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
 
-	verbose_log("[%u] PRE-COMPACT total=%d", process_id(), processManager.size());
+	debug_log("[%u] PRE-COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
 
 	processManager.CompactList();
 
-	verbose_log("[%u] COMPACT total=%d", process_id(), processManager.size());
+	debug_log("[%u] COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
-		verbose_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
+		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
@@ -5443,7 +5438,7 @@ void GetDhtProcess::CompleteThisProcess()
 	if (processManager.size() < 8 && !aborted && retries++ < 2) {
 		// we got less than a bucket's worth of replies
 		// we obviously didn't get a good set of peers to query, so try again
-		verbose_log("[%u] Restarting process", process_id());
+		debug_log("[%u] Restarting process", process_id());
 
 		for (int i = 0; i < processManager.size(); ++i) {
 			// CompactList resets the queried state to QUERIED_NO, since we're
@@ -5824,6 +5819,11 @@ void ImmutablePutDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	static const int buf_len = 1500;
 	unsigned char buf[buf_len];
 	smart_buffer sb(reinterpret_cast<unsigned char*>(buf), buf_len);
+
+	trace_log(">>> put (%d), to_addr:%s, to_id:%s"
+			, transactionID
+			, print_sockaddr(nodeInfo.id.addr).c_str()
+			, format_dht_id(nodeInfo.id.id).c_str());
 
 	sb("d1:ad");
 	sb("2:id20:")(DHT_ID_SIZE, (byte*)this->_id);
