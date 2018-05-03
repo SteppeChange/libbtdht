@@ -745,16 +745,6 @@ inline void DhtPeer::CopyAllButNext(const DhtPeer &src)
 }
 
 
-enum DhtProcessFlags
-{
-	EMPTY           = 0x00,
-	NORMAL_RESPONSE = 0x01,
-	PROCESS_AS_SLOW = 0x02,
-	ICMP_ERROR      = 0x04,
-	TIMEOUT_ERROR   = 0x08,
-	ANY_ERROR       = ICMP_ERROR | TIMEOUT_ERROR
-};
-
 struct DhtRequest;
 
 /**
@@ -1401,7 +1391,7 @@ public:
 			, CallBackPointers &cbPointers
 			, int maxOutstanding
 			, int flags
-			, std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& a_success_fun
+			, IDht::find_node_success const& a_success_fun
 			, std::function<void(std::string const& error_reason)> const& a_failed_fun);
 
 	virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
@@ -1412,7 +1402,7 @@ public:
 protected:
 	DhtPeerID found_peer;
 	DhtPeerID source_peer;
-	std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> success_fun;
+	IDht::find_node_success success_fun;
 	std::function<void(std::string const& error_reason)> failed_fun;
 };
 
@@ -1881,7 +1871,7 @@ public:
 		void *ctx, int flags) override;
 
 	void FindNode(sha1_hash const& target,
-				  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
+				  find_node_success const& success_fun,
 				  std::function<void(std::string const& error_reason)> const& failed_fun)  override;
 
 /*  Hole Punch
@@ -1926,6 +1916,8 @@ public:
 	void punch_request(int punch_id, SockAddr const& target, SockAddr const& executor);
 
 	void punch(HolePunch type, int punch_id, SockAddr const& target, SockAddr const* executor, SockAddr const* relay);
+
+	void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) override ;
 
 	void SetRate(int bytes_per_second) override;
 	void SetVersion(char const* client, int major, int minor) override;
@@ -2304,7 +2296,7 @@ public:
 	uint PingStalestNode();
 
 	void DoFindNodes(DhtID const& target,
-					 std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
+					 find_node_success const& success_fun,
 					 std::function<void(std::string const& error_reason)> const& failed_fun);
 
 	void DoBootstrap();
@@ -2334,6 +2326,8 @@ public:
 	// the response from a node passed to AddNode()
 	void OnAddNodeReply(void*& userdata, const DhtPeerID &peer_id
 		, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
+
+	void OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
 
 	// the respons from a NICE ping (part of bucket maintanence)
 	void OnPingReply(void*& userdata, const DhtPeerID &peer_id

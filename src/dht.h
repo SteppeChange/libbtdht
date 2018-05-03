@@ -43,11 +43,23 @@ enum DHTLogLevel {
     EDhtVerbose
 };
 
+enum DhtProcessFlags
+{
+	EMPTY           = 0x00,
+	NORMAL_RESPONSE = 0x01,
+	PROCESS_AS_SLOW = 0x02,
+	ICMP_ERROR      = 0x04,
+	TIMEOUT_ERROR   = 0x08,
+	ANY_ERROR       = ICMP_ERROR | TIMEOUT_ERROR
+};
+
 
 class DHTEvents {
 public:
 	virtual void dht_id_has_changed( sha1_hash new_id) = 0;
 	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
+	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
+
 //	virtual ~DHTEvents() {};
 };
 
@@ -163,12 +175,20 @@ public:
 
 	virtual void ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb, void *ctx, int flags = 0) = 0;
 
+	/*
+	 * sockaddr_storage const& node_addr - found node ip:port
+	 * sha1_hash const& source_id - found node hash id
+	 * sockaddr_storage const& source_addr - neighbor of the found node, that have reported about it, (empty if found node is our neighbour)
+	 * int rtt - round trip time of this node if its known
+	 * */
+	typedef std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr, int rtt)> find_node_success;
 	virtual void FindNode(sha1_hash const& target,
-						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
+						  find_node_success const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)  = 0;
 
 	virtual void punch_test(int punch_id, SockAddr const& target) = 0;
 	virtual void punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay) = 0;
+	virtual void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;
 	virtual void Enable(bool enabled, int rate) = 0;

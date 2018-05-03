@@ -1054,6 +1054,16 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 	return req;
 }
 
+void DhtImpl::ping(sockaddr_storage const& node_addr, sha1_hash const& node_id)
+{
+	DhtPeerID peer;
+	peer.addr = node_addr;
+	peer.id = node_id;
+	DhtRequest *req = SendPing(peer);
+	req->has_id = false;
+	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnPong, 0);
+}
+
 // sends a single find-node request
 DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
 	unsigned char buf[1500];
@@ -2738,7 +2748,7 @@ void DhtImpl::DoBootstrap()
 }
 
 void DhtImpl::DoFindNodes(DhtID const& target,
-						  std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
+						  find_node_success const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)
 {
 	debug_log("DoFindNodes: %s", format_dht_id(target).c_str());
@@ -3054,6 +3064,13 @@ void DhtImpl::OnAddNodeReply(void* &userdata, const DhtPeerID &peer_id
 	}
 
 	OnPingReply(userdata, peer_id, req, message, flags);
+}
+
+void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
+{
+	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
+	if (_dht_events)
+		_dht_events->dht_recv_pong(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags);
 }
 
 void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
@@ -5621,7 +5638,7 @@ bool DhtImpl::Verify(byte const * signature, byte const * message, int message_l
 
 
 void DhtImpl::FindNode(	sha1_hash const& target,
-			 			std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& success_fun,
+						   find_node_success const& success_fun,
 			 			std::function<void(std::string const& error_reason)> const& failed_fun)
 {
 
@@ -5638,7 +5655,7 @@ void DhtImpl::FindNode(	sha1_hash const& target,
 		// TO DO ? if (now - peer->first_seen < min_age)
         sha1_hash empty_sha1;
         empty_sha1.clear();
-		success_fun(existingNode->id.addr.get_sockaddr_storage(), empty_sha1, sockaddr_storage());
+		success_fun(existingNode->id.addr.get_sockaddr_storage(), empty_sha1, sockaddr_storage(), existingNode->rtt);
 	}
 	else { // there is NO the target node in the local t-bucket
 		DhtID t_id(target);
@@ -6584,7 +6601,7 @@ DhtProcessBase* FindNodeEventualyDhtProcess::Create(DhtImpl* pDhtImpl
 		, CallBackPointers &cbPointers
 		, int maxOutstanding
 		, int flags
-		, std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr)> const& a_success_fun
+		, IDht::find_node_success const& a_success_fun
 		, std::function<void(std::string const& error_reason)> const& a_failed_fun)
 {
 	debug_log("create eventualy find_node request: looking_for:%s",
@@ -6623,7 +6640,7 @@ void FindNodeEventualyDhtProcess::CompleteThisProcess()
 					  format_dht_id(source_peer.id).c_str(), print_sockaddr(source_peer.addr).c_str()
                   );
         
-		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage());
+		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage(), 0);
 	}
 	else
 	{
