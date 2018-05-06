@@ -2357,14 +2357,20 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 
 	if (message.punchType == HPRelay || message.punchType == HPRequest) {
 		bool ok = punchTarget.from_compact(message.punchTarget_ip.b, message.punchTarget_ip.len);
-		if (!ok) return false;
-		if (!punchTarget.isv4()) return false;
+		if (!ok)
+        {
+            error_log("punchTarget.from_compact failed");
+            return false;
+        }
 	}
 
 	if (message.punchType == HPRelay) {
 		bool ok = punchExecutor.from_compact(message.punchExecutor_ip.b, message.punchExecutor_ip.len);
-		if (!ok) return false;
-		if (!punchExecutor.isv4()) return false;
+        if (!ok)
+        {
+            error_log("punchExecutor.from_compact failed");
+            return false;
+        }
 	}
 
 	if (message.punchType == HPRelay)
@@ -2965,6 +2971,9 @@ done:
 
 	oldest->lastContactTime = time(NULL);
 	DhtRequest *req = SendFindNode(oldest->id);
+    
+    if (req == NULL) return 0;
+    
 	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnPingReply);
 	return req->tid;
 }
