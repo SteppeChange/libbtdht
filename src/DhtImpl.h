@@ -706,9 +706,7 @@ public:
 	int GetSubprefixPositionBit() const {return subPrefixPositionBit;}
 	void CopyAllButNext(const DhtPeer &src);
 
-#if g_log_dht
 	uint origin;
-#endif
 
 	DhtPeer()
 		: subPrefixInt(0)
@@ -718,9 +716,7 @@ public:
 		, rtt(INT_MAX)
 		, first_seen(0)
 		, next(NULL)
-#if g_log_dht
 		, origin(0)
-#endif
 	{}
 };
 
@@ -2192,7 +2188,7 @@ public:
 	DhtPeer *Update(const DhtPeerID &id, uint origin, bool seen = false, int rtt = INT_MAX);
 
 	// Increase the error counter for a peer
-	void UpdateError(const DhtPeerID &id, bool force_remove = false);
+	void UpdateError(const DhtPeerID &id, uint transaction, bool force_remove = false);
 	
 	uint CopyPeersFromBucket(uint bucket_id, DhtPeerID **list, uint numwant, int &wantfail, time_t min_age);
 

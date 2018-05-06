@@ -1102,8 +1102,9 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
     
 	DhtRequest *req = AllocateRequest(peer_id);
 
-    trace_log(">>> find_node refresh neighbours:%d addr:%s", req->tid
-		, print_sockaddr(peer_id.addr).c_str());
+    trace_log(">>> find_node refersh (%d), to_addr:%s, to_id:%s, looking_for:%s", req->tid
+              , print_sockaddr(peer_id.addr).c_str(), format_dht_id(peer_id.id).c_str(), hexify(target_bytes).c_str());
+
 
 	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 	sb("6:target20:")(DHT_ID_SIZE, target_bytes);
@@ -1133,7 +1134,7 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
 /**
 	Increase the error counter for a peer
 */
-void DhtImpl::UpdateError(const DhtPeerID &id, bool force_remove)
+void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remove)
 {
 	int bucket_id = GetBucket(id.id);
 	if (bucket_id < 0) return;
@@ -1145,9 +1146,10 @@ void DhtImpl::UpdateError(const DhtPeerID &id, bool force_remove)
 		// Check if the peer is already in the bucket
 		if (id != p->id) continue;
 
-		debug_log("node %s (id: %s) failed"
-			, print_sockaddr(p->id.addr).c_str()
-			, format_dht_id(p->id.id).c_str());
+		debug_log("node %s %s failed (%d)"
+                  , print_sockaddr(p->id.addr).c_str()
+                  , format_dht_id(p->id.id).c_str()
+                  , transaction);
 
 		// rtt is set to INT_MAX until we receive the first response from this node
 		if (++p->num_fail >= (p->rtt != INT_MAX ? FAIL_THRES : FAIL_THRES_NOCONTACT)
@@ -3095,7 +3097,7 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 		|| (flags & ANY_ERROR)) {
 
 		// Mark that the peer errored
-		UpdateError(peer_id, flags & ICMP_ERROR);
+		UpdateError(peer_id, req->tid, flags & ICMP_ERROR);
 		return;
 	}
 
@@ -3762,7 +3764,7 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 	}
 #endif
 
-	if (message.version.len == 4) {
+/*	if (message.version.len == 4) {
 		debug_log(" [%d.%d.%d.%d:%u] client version: %c%c %u"
 			, addr._sin6[12]
 			, addr._sin6[13]
@@ -3781,7 +3783,7 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 			, addr._sin6[15]
 			, addr.get_port()
 			);
-	}
+	} */
 
 	if (_dht_enabled)
 		return InterpretMessage(message, addr, len);
@@ -4031,9 +4033,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	candidateNode.num_fail = 0;
 	candidateNode.first_seen = now;
 	candidateNode.lastContactTime = seen ? now : 0;
-#if g_log_dht
 	candidateNode.origin = origin;
-#endif
 
 	// try putting the node in the active node list (or updating it if it's already there)
 	bool added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::peer_list, &returnNode);
@@ -4515,7 +4515,7 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	if(flags & ANY_ERROR){
 		DhtFindNodeEntry *dfnh = processManager.FindQueriedPeer(peer_id);
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
-		impl->UpdateError(peer_id, flags & ICMP_ERROR);
+		impl->UpdateError(peer_id, req->tid, flags & ICMP_ERROR);
 
 		debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
 
@@ -4710,7 +4710,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 	if(errored || (flags & ANY_ERROR)){
 		// mark peer as errored
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
-		impl->UpdateError(peer_id, flags & ICMP_ERROR);
+		impl->UpdateError(peer_id, Read32(message.transactionID.b), flags & ICMP_ERROR);
 	}
 	else if (dfnh) {
 		// mark that the peer replied.
@@ -4910,7 +4910,7 @@ void DhtBroadcastScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 		DhtFindNodeEntry *dfnh = processManager.FindQueriedPeer(peer_id);
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
         debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
-		impl->UpdateError(peer_id, flags & ICMP_ERROR);
+		impl->UpdateError(peer_id, req->tid, flags & ICMP_ERROR);
 		outstanding--;
 		Schedule(); // put another request in flight since this peer is slow to reply (and may be dead)
 		return;
@@ -4943,7 +4943,7 @@ void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	unsigned char buf[1500];
 	smart_buffer sb(buf, sizeof(buf));
 
-    trace_log(">>> find_node %s: transaction:%d, to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
+    trace_log(">>> find_node %s (%d), to_addr:%s, to_id:%s, looking_for:%s", name(), transactionID
 			, print_sockaddr(nodeInfo.id.addr).c_str(), format_dht_id(nodeInfo.id.id).c_str(), hexify(target_bytes).c_str());
 
 	// The find_node rpc
@@ -5313,7 +5313,7 @@ void AnnounceDhtProcess::ImplementationSpecificReplyProcess(void *userdata, cons
 {
 	// handle errors
 	if(message.dhtMessageType != DHT_RESPONSE){
-		impl->UpdateError(peer_id, flags & ICMP_ERROR);
+		impl->UpdateError(peer_id, Read32(message.transactionID.b), flags & ICMP_ERROR);
 	}
 }
 
@@ -5772,7 +5772,7 @@ void PutDhtProcess::ImplementationSpecificReplyProcess(void *userdata
 {
 	// handle errors
 	if (message.dhtMessageType != DHT_RESPONSE){
-		impl->UpdateError(peer_id, flags & ICMP_ERROR);
+		impl->UpdateError(peer_id, Read32(message.transactionID.b), flags & ICMP_ERROR);
 	}
 	if (message.dhtMessageType == DHT_ERROR
 		&& (message.error_code == LOWER_SEQ
@@ -5833,7 +5833,7 @@ void PutDhtProcess::CompleteThisProcess()
 
 void ImmutablePutDhtProcess::ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) {
 	if (message.dhtMessageType != DHT_RESPONSE) {
-		impl->UpdateError(peer_id, flags & ICMP_ERROR);
+		impl->UpdateError(peer_id, Read32(message.transactionID.b), flags & ICMP_ERROR);
 	}
 
 	verbose_log("[%u] <-- PUT tid=%d", process_id(), Read32(message.transactionID.b));
@@ -6373,7 +6373,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		}
 
 		// Check if the peer is already in the bucket
-		if (candidateNode.id != p->id) continue;
+		if (candidateNode.id.id != p->id.id) continue;
 
 #if g_log_dht
 		assert(p->origin >= 0);
@@ -6392,6 +6392,18 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 			// sliding average. blend in the new RTT by one quarter
 				p->rtt = (p->rtt * 3 + candidateNode.rtt) / 4;
 		}
+        
+        // NODE address update
+        // p->rtt == INT_MAX means, that we have no response from this node
+        // so we need to update addr, maybe new addr allows to connect
+        // we can improve this rule - accept only response
+        if(p->rtt == INT_MAX)
+        {
+            if(p->id.addr != candidateNode.id.addr)
+                debug_log("node addr was changed %s -> %s", print_sockaddr(p->id.addr).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
+            p->id.addr = candidateNode.id.addr;
+        }
+        
 		if (pout) *pout = p;
 		return true;
 	}
