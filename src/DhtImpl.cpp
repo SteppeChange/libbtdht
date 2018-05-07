@@ -38,6 +38,8 @@ limitations under the License.
 #include <limits>
 #include <netdb.h>
 #include <memory>
+#include <arpa/inet.h>
+
 
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 const char MUTABLE_PAYLOAD_FORMAT[] = "3:seqi%" PRId64 "e1:v";
@@ -131,27 +133,26 @@ static void verbose_log(char const* fmt, Args ... args)
 // TODO: factor this into btutils sockaddr
 std::string print_sockaddr(SockAddr const& addr)
 {
-	char buf[256];
-	if (addr.isv6()) {
-		in6_addr a = addr.get_addr6();
-		int offset = 0;
-		buf[offset++] = '[';
-		for (int i = 0; i < 16; ++i)
-			offset += snprintf(buf + offset,
-							   sizeof(buf) - offset,
-							   ":%02x",
-							   a.s6_addr[i]);
-		snprintf(buf + offset, sizeof(buf) - offset, "]:%u", addr.get_port());
-	} else {
-		uint a = addr.get_addr4();
-		snprintf(buf, sizeof(buf), "%u.%u.%u.%u:%u"
-			, (a >> 24) & 0xff
-			, (a >> 16) & 0xff
-			, (a >> 8) & 0xff
-			, a & 0xff
-			, addr.get_port());
-	}
-	return buf;
+    char address[255]; // INET_ADDRSTRLEN
+    memset(&address, 0, sizeof(address));
+    int port = 0;
+    size_t end = 0;
+    sockaddr_storage const& sa = addr.get_sockaddr_storage();
+    if (sa.ss_family == AF_INET6) {
+        address[0]='[';
+        inet_ntop( AF_INET6, &(((struct sockaddr_in6 const *)&sa)->sin6_addr), address+1, sizeof(address)-1 );
+        address[strlen(address)]=']';
+        port = ((struct sockaddr_in6 const *)&sa)->sin6_port;
+    }
+    if (sa.ss_family == AF_INET) {
+        inet_ntop( AF_INET, &(((struct sockaddr_in const *)&sa)->sin_addr), address, sizeof(address) );
+        port = ((struct sockaddr_in const *)&sa)->sin_port;
+    }
+    
+    end = strlen(address);
+    snprintf(address+end, sizeof(address)-end, ":%u", port);
+    return address;
+
 }
 
 
