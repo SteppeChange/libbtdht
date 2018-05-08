@@ -150,7 +150,7 @@ std::string print_sockaddr(SockAddr const& addr)
     }
     
     end = strlen(address);
-    snprintf(address+end, sizeof(address)-end, ":%u", port);
+    snprintf(address+end, sizeof(address)-end, ":%u", ntohs(port));
     return address;
 
 }
