@@ -173,7 +173,15 @@ public:
 		void *ctx,
 		int flags = 0) = 0;
 
-	virtual void ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb, void *ctx, int flags = 0) = 0;
+	/* get_peers classic DHT command
+	 * There is one diff between classic and ResolveName: classic get_peers returns ip:port,  ResolveName returns dht_id
+	 *
+	 * Get peers associated with a torrent infohash. "q" = "get_peers"
+	 * A get_peers query has two arguments, "id" containing the node ID of the querying node,
+	 * and "info_hash" containing the infohash of the torrent.
+	 *
+	 */
+	virtual void ResolveName(sha1_hash const& infohash, DhtGetPeersCallback* callb, void *ctx, int flags = 0) = 0;
 
 	/*
 	 * sockaddr_storage const& node_addr - found node ip:port
@@ -182,10 +190,49 @@ public:
 	 * int rtt - round trip time of this node if its known
 	 * */
 	typedef std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr, int rtt)> find_node_success;
+	/*
+	 * classic find_node
+	 *
+	 * Find node is used to find the contact information for a node given its ID.
+	 * "target" containing the ID of the node sought by the queryer.
+	 *
+	 */
 	virtual void FindNode(sha1_hash const& target,
 						  find_node_success const& success_fun,
 						  std::function<void(std::string const& error_reason)> const& failed_fun)  = 0;
 
+	/*  Address (ip/port) restricted NAT hole punching
+
+		Theory:
+		There are A, B, C nodes
+		There are AB and BC connections
+		We need AС connection
+		A->С punching requires 2 packets - there and back
+		First A->С (punch("test"), will be lost, but it's open the NAT to one side
+		Second С->A (punch("test") will pass
+
+
+		Algorithm:
+		A sends packet to С - punch("test", punch_id)
+					punch_id - unique punch command id
+		A sends packet to B - punch("relay", target_addres, executor_addr, punch_id).
+					target_address - ip:port A
+					executor_addr - ip:port C
+		B sends packet to C - punch("request",target_address, punch_id)
+		C sends packet to A - punch("test", punch_id)
+
+		Success indicator is receiving punch_test( punch_id )
+
+
+			┌──────────> B (node relay) ────────────┐
+			│										│
+			│										│
+		punch_relay							punch_request
+			│										│
+			│										˅
+	 A (node target) <──────punch_test────── C (node executor)
+
+	*/
 	virtual void punch_test(int punch_id, SockAddr const& target) = 0;
 	virtual void punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay) = 0;
 	virtual void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
