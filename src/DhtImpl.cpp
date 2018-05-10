@@ -1572,12 +1572,17 @@ void DhtImpl::ExpirePeersFromStore(time_t expire_before)
 
 void DhtImpl::GenerateWriteToken(sha1_hash *token, const DhtPeerID &peer_id)
 {
-	// TODO: v6
-	assert(peer_id.addr.isv4());
-	uint32 tokendata[4] = {
+    uint32 ip_mask = 0;
+
+    if(peer_id.addr.isv4())
+        ip_mask = peer_id.addr.get_addr4();
+    if(peer_id.addr.isv6())
+        ip_mask = peer_id.addr.get_addr6().s6_addr[0];
+
+    uint32 tokendata[4] = {
 		_cur_token[0],
 		_cur_token[1],
-		peer_id.addr.get_addr4(),
+		ip_mask,
 		peer_id.addr.get_port()
 	};
 	*token = _sha_callback((const byte*)tokendata, sizeof(tokendata));
@@ -1586,19 +1591,26 @@ void DhtImpl::GenerateWriteToken(sha1_hash *token, const DhtPeerID &peer_id)
 bool DhtImpl::ValidateWriteToken(const DhtPeerID &peer_id, const byte *token)
 {
 
-	// TODO: v6
-	assert(peer_id.addr.isv4());
+    uint32 ip_mask = 0;
+    
+    if(peer_id.addr.isv4())
+        ip_mask = peer_id.addr.get_addr4();
+    if(peer_id.addr.isv6())
+        ip_mask = peer_id.addr.get_addr6().s6_addr[0];
 
 	// see if it matches the current token.
 	uint32 tokendata[4] = {
 		_cur_token[0],
 		_cur_token[1],
-		peer_id.addr.get_addr4(),
+		ip_mask,
 		peer_id.addr.get_port()
 	};
 	sha1_hash digest = _sha_callback((const byte*)tokendata, sizeof(tokendata));
+    
 	if (digest == token)
 		return true;
+    else
+        error_log("wrong token from %s", print_sockaddr(peer_id.addr).c_str());
 
 	// See if it matches the prev token
 	tokendata[0] = _prev_token[0];
@@ -1838,13 +1850,6 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	// validate the token
 	if (!ValidateWriteToken(peerID, message.token.b)) {
 		Account(DHT_INVALID_PQ_INVALID_TOKEN, packetSize);
-		return false;
-	}
-
-	// TODO: v6
-	assert(peerID.addr.isv4());
-	if (!peerID.addr.isv4()) {
-		Account(DHT_INVALID_PQ_IPV6, packetSize);
 		return false;
 	}
 
@@ -5125,6 +5130,13 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, print_sockaddr(nodeInfo.id.addr).c_str()
 			, format_dht_id(nodeInfo.id.id).c_str());
 
+    SockAddr addr = nodeInfo.id.addr;
+    addr = impl->ipv4ipv6_resolve(addr);
+    if(addr.get_port() == INVALID_PORT) {
+        error_log("GetPeersDhtProcess::DhtSendRPC fails, unresolved peer addr");
+        return;
+    }
+    
 	smart_buffer sb(buf, bufLen);
 
 	sb("d1:ad");
@@ -5147,10 +5159,10 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 #ifdef _DEBUG_DHT
 	if (impl->_lookup_log)
 		fprintf(impl->_lookup_log, "[%u] [%u] [%s]: GET-PEERS -> %s\n"
-			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
+			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(addr).c_str());
 #endif
 
-	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
+	impl->SendTo(addr, buf, sb.length());
 }
 
 
@@ -5285,6 +5297,13 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	// build the bencoded query string
 	smart_buffer sb(buf, bufLen);
 
+    SockAddr addr = nodeInfo.id.addr;
+    addr = impl->ipv4ipv6_resolve(addr);
+    if(addr.get_port() == INVALID_PORT) {
+        error_log("AnnounceDhtProcess::DhtSendRPC fails, unresolved peer addr");
+        return;
+    }
+    
 	sb("d1:ad");
 
 	int args_len = announceArgumenterPtr->BuildArgumentBytes((byte*)rpcArgsBuf, bufLen);
@@ -5304,10 +5323,11 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 #ifdef _DEBUG_DHT
 	if (impl->_lookup_log)
 		fprintf(impl->_lookup_log, "[%u] [%u] [%s]: ANNOUNCE -> %s\n"
-			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(nodeInfo.id.addr).c_str());
+			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(addr).c_str());
 #endif
+    
 
-	impl->SendTo(nodeInfo.id.addr, buf, sb.length());
+	impl->SendTo(addr, buf, sb.length());
 }
 
 void AnnounceDhtProcess::ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags)
