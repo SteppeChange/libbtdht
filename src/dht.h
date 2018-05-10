@@ -165,6 +165,12 @@ public:
 	virtual void ImmutableGet(sha1_hash target, DhtGetCallback* cb
 		, void* ctx = nullptr) = 0;
 
+	/* announce_peer classic wrapper
+	 *
+	 * Announce that the peer, controlling the querying node, is downloading a torrent on a port.
+	 * "info_hash" containing the infohash of the torrent
+	 *
+	 */
 	virtual void AnnounceInfoHash(
 		const byte *info_hash,
 		DhtAddNodesCallback *addnodes_callback,
@@ -173,7 +179,7 @@ public:
 		void *ctx,
 		int flags = 0) = 0;
 
-	/* get_peers classic DHT command
+	/* get_peers classic wrapper
 	 * There is one diff between classic and ResolveName: classic get_peers returns ip:port,  ResolveName returns dht_id
 	 *
 	 * Get peers associated with a torrent infohash. "q" = "get_peers"
@@ -191,7 +197,7 @@ public:
 	 * */
 	typedef std::function<void(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr, int rtt)> find_node_success;
 	/*
-	 * classic find_node
+	 * classic find_node wrapper
 	 *
 	 * Find node is used to find the contact information for a node given its ID.
 	 * "target" containing the ID of the node sought by the queryer.
