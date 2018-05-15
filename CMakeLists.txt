@@ -5,39 +5,39 @@ set(CMAKE_CXX_STANDARD 11)
 project(btdht)
 
 set(SOURCE_FILES
-        btutils/src/bench-json.h
-        btutils/src/bencoding.cpp
-        btutils/src/bencoding.h
-        btutils/src/bencparser.cpp
-        btutils/src/bencparser.h
-        btutils/src/bitfield.cpp
-        btutils/src/bitfield.h
-        btutils/src/bloom_filter.cpp
-        btutils/src/bloom_filter.h
-        btutils/src/DecodeEncodedString.cpp
-        btutils/src/DecodeEncodedString.h
-        btutils/src/endian_utils.h
-        btutils/src/enumtype.h
-        btutils/src/get_microseconds.cpp
-        btutils/src/get_microseconds.h
-        btutils/src/inet_ntop.cpp
-        btutils/src/inet_ntop.h
-        btutils/src/interlock.cpp
-        btutils/src/interlock.h
-        btutils/src/invariant_check.hpp
-        btutils/src/RefBase.cpp
-        btutils/src/RefBase.h
-        btutils/src/sha1_hash.h
-        btutils/src/smart_ptr.h
-        btutils/src/snprintf.cpp
-        btutils/src/snprintf.h
-        btutils/src/sockaddr.cpp
-        btutils/src/sockaddr.h
-        btutils/src/tailqueue.h
-        btutils/src/target.h
-        btutils/src/udp_utils.cpp
-        btutils/src/udp_utils.h
-        btutils/src/utypes.h
+        libbtutils/src/bench-json.h
+        libbtutils/src/bencoding.cpp
+        libbtutils/src/bencoding.h
+        libbtutils/src/bencparser.cpp
+        libbtutils/src/bencparser.h
+        libbtutils/src/bitfield.cpp
+        libbtutils/src/bitfield.h
+        libbtutils/src/bloom_filter.cpp
+        libbtutils/src/bloom_filter.h
+        libbtutils/src/DecodeEncodedString.cpp
+        libbtutils/src/DecodeEncodedString.h
+        libbtutils/src/endian_utils.h
+        libbtutils/src/enumtype.h
+        libbtutils/src/get_microseconds.cpp
+        libbtutils/src/get_microseconds.h
+        libbtutils/src/inet_ntop.cpp
+        libbtutils/src/inet_ntop.h
+        libbtutils/src/interlock.cpp
+        libbtutils/src/interlock.h
+        libbtutils/src/invariant_check.hpp
+        libbtutils/src/RefBase.cpp
+        libbtutils/src/RefBase.h
+        libbtutils/src/sha1_hash.h
+        libbtutils/src/smart_ptr.h
+        libbtutils/src/snprintf.cpp
+        libbtutils/src/snprintf.h
+        libbtutils/src/sockaddr.cpp
+        libbtutils/src/sockaddr.h
+        libbtutils/src/tailqueue.h
+        libbtutils/src/target.h
+        libbtutils/src/udp_utils.cpp
+        libbtutils/src/udp_utils.h
+        libbtutils/src/utypes.h
         src/blockallocator.cpp
         src/blockallocator.h
         src/Buffer.h
