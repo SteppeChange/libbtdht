@@ -1,0 +1,3 @@
+[submodule "libbtutils"]
+	path = libbtutils
+	url = https://github.com/SteppeChange/libbtutils.git
