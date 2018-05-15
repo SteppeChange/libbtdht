@@ -2270,7 +2270,7 @@ public:
 
 	void DoScrape(const DhtID &target, DhtScrapeCallback *callb, void *ctx, int flags = 0);
 
-	void ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb, void *ctx, int flags = 0);
+	void ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb, void *ctx, int flags = 0) override;
 
 	void DoAnnounce(const DhtID &target,
 		DhtAddNodesCallback *callb,

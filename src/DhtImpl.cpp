@@ -2503,8 +2503,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 			  format_dht_id(peerID.id).c_str(),
 			  req == 0 ? "unknown" : req->_pListener->name());
 
-	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
-		int debug = 0;
+//	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
+//		int debug = 0;
 
 
 //	GetPeersDhtProcess : public DhtLookupScheduler : public DhtProcessBase // virtual char const* name() const = 0;
