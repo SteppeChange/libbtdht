@@ -1020,7 +1020,6 @@ DhtRequest *DhtImpl::AllocateRequest(const DhtPeerID &peer_id)
 	} while (LookupRequest(req->tid));
 
 	_requests.enqueue(req);
-	req->has_id = true;
 	req->slow_peer = false;
 	req->peer = peer_id;
 	req->time = get_milliseconds();
@@ -1061,7 +1060,6 @@ void DhtImpl::ping(sockaddr_storage const& node_addr, sha1_hash const& node_id)
 	peer.addr = node_addr;
 	peer.id = node_id;
 	DhtRequest *req = SendPing(peer);
-	req->has_id = false;
 	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnPong, 0);
 }
 
@@ -2523,7 +2521,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		}
 
         // for bootstrup its wrong check because // _temp_nodes[c].id.id[4] = rand();
-		if (req->has_id && !IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
+		if (!IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
 			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
             error_log("Error: Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
@@ -3166,7 +3164,6 @@ void DhtImpl::AddNode(const SockAddr& addr, void* userdata, uint origin)
 	peer_id.id = _my_id;
 
 	DhtRequest *req = SendFindNode(peer_id);
-	req->has_id = false;
 	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnAddNodeReply, userdata);
 
 #if g_log_dht

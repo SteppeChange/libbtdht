@@ -825,7 +825,6 @@ struct DhtRequest {
 	IDhtRequestListener *_pListener;
 
 	DhtPeerID peer;
-	bool has_id;
 	bool slow_peer;
 
 	// Requests form a linked list
