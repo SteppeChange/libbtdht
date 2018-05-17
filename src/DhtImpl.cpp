@@ -2513,20 +2513,27 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		return false;	// invalid transaction id?
 	}
 	// Verify that the id contained in the message matches with the peer id.
-	if (message.dhtMessageType == DHT_RESPONSE) {
+	if (message.dhtMessageType == DHT_RESPONSE) // it may be DHT_ERROR
+	{
 
         if(!message.id) {
 			Account(DHT_INVALID_PQ_BAD_ID_FIELD, pkt_size);
 			return false; // bad/missing ID field
 		}
 
-        // for bootstrup its wrong check because // _temp_nodes[c].id.id[4] = rand();
+        // for bootstrup its wrong, see // _temp_nodes[c].id.id[4] = rand();
 		if (!IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
 			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
             error_log("Error: Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
                       format_dht_id(req->peer.id).c_str());
-			return false;
+
+			UnlinkRequest(req);
+			req->_pListener->Callback(req->peer, req, message, ID_MISMATCH);
+			delete req->_pListener;
+			// Cleanup
+			delete req;
+			return true;
 		}
         
 	} else {
@@ -2537,7 +2544,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
-        error_log("Error: Respnse IP != Request IP %s %s",
+        error_log("Error: Response IP != Request IP %s %s",
                   print_sockaddr(req->peer.addr).c_str(), print_sockaddr(peerID.addr).c_str());
 		return false;
 	}
