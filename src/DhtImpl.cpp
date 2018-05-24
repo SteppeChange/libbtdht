@@ -1842,7 +1842,7 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 		return false;
 	}
 
-	debug_log("ANNOUNCE_PEER: id='%s', info_hash='%s', token='%s', host='%A'",
+	debug_log("<<< announce_peer: id='%s', info_hash='%s', token='%s', host='%A'",
               format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(), hexify(message.token.b).c_str(), &peerID.addr);
 
 	// validate the token
@@ -1931,7 +1931,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	BuildFindNodesPacket(sb, info_hash_id, mtu - size, peerID.addr);
 	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
 
-	debug_log("GET_PEERS: id='%s', info_hash='%s', token='%s'",
+	debug_log("<<< get_peers: id='%s', info_hash='%s', token='%s'",
 			 format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(), hexify(ttoken.value).c_str());
 
 	if (has_values) {
@@ -5340,6 +5340,10 @@ void AnnounceDhtProcess::ImplementationSpecificReplyProcess(void *userdata, cons
 	if(message.dhtMessageType != DHT_RESPONSE){
 		impl->UpdateError(peer_id, Read32(message.transactionID.b), flags & ICMP_ERROR);
 	}
+	if(message.dhtMessageType == DHT_RESPONSE){
+		debug_log("tid:(%d), it was announced at %s \n",  Read32(message.transactionID.b), print_sockip(peer_id.addr).c_str());
+	}
+
 }
 
 void AnnounceDhtProcess::CompleteThisProcess()
