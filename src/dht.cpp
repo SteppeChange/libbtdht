@@ -25,9 +25,9 @@ limitations under the License.
 extern uint32 crc32c(const unsigned char* buf, uint32 len=4);
 
 smart_ptr<IDht> create_dht(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
-	, DhtSaveCallback* save, DhtLoadCallback* load, ExternalIPCounter* eip, DHTEvents* dht_events)
+	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip, DHTEvents* dht_events)
 {
-	return smart_ptr<IDht>(new DhtImpl(udp_socket_mgr, udp6_socket_mgr, save, load, eip, dht_events));
+	return smart_ptr<IDht>(new DhtImpl(udp_socket_mgr, udp6_socket_mgr, save, load, callbacks_user_data, eip, dht_events));
 }
 
 IDht::~IDht() {}

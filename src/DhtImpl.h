@@ -1801,6 +1801,7 @@ public:
 	DhtImpl(UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr
 		, DhtSaveCallback* save = NULL
 		, DhtLoadCallback* load = NULL
+		, void* callbacks_user_data = NULL
 		, ExternalIPCounter* eip = NULL
 		, DHTEvents* dht_events = NULL
 	);
@@ -1819,7 +1820,7 @@ public:
 #endif
 
 private:
-	void Initialize(UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr ) override;
+	void Initialize(void* user_data, UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr ) override;
 
 public:
 
@@ -1829,7 +1830,7 @@ public:
 
 	void Close() override { _closing = true; }
 	bool Closing() { return _closing; }
-	void Shutdown() override;
+	void Shutdown(void* user_data) override;
 	void Tick() override;
 	void Enable(bool enabled, int rate) override;
 	bool IsEnabled() override;
@@ -2315,8 +2316,8 @@ public:
 		byte port[2];
 	};
 
-	void SaveState();
-	void LoadState();
+	void SaveState(void* user_data);
+	void LoadState(void* user_data);
 
 
 };

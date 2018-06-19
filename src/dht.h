@@ -79,10 +79,10 @@ typedef void DhtGetCallback(void* ctx, std::vector<char> const& buffer);
 typedef void DhtLogCallback(int level, char const* str);
 
 // asks the client to save the DHT state
-typedef void DhtSaveCallback(const byte* buf, int len);
+typedef void DhtSaveCallback(void* user_data, const byte* buf, int len);
 
 // asks the client to load the DHT state into ent
-typedef void DhtLoadCallback(BencEntity* ent);
+typedef void DhtLoadCallback(void* user_data, BencEntity* ent);
 
 // called for all incoming and outgoing packets
 typedef void DhtPacketCallback(void const* buffer, size_t len, bool incoming);
@@ -271,8 +271,8 @@ public:
 	virtual void AddNode(const SockAddr& addr, void* userdata, uint origin) = 0;
 	virtual bool CanAnnounce() = 0;
 	virtual void Close() = 0;
-	virtual void Shutdown() = 0;
-	virtual void Initialize(UDPSocketInterface *, UDPSocketInterface *) = 0;
+	virtual void Shutdown(void* user_data) = 0;
+	virtual void Initialize(void* user_data, UDPSocketInterface *, UDPSocketInterface *) = 0;
 	virtual bool IsEnabled() = 0;
 	virtual void ForceRefresh() = 0;
 	// do not respond to queries - for mobile nodes with data constraints
@@ -314,7 +314,7 @@ public:
 };
 
 smart_ptr<IDht> create_dht(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
-	, DhtSaveCallback* save, DhtLoadCallback* load, ExternalIPCounter* eip = NULL, DHTEvents* dht_events = NULL);
+	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip = NULL, DHTEvents* dht_events = NULL);
 
 void set_log_callback(DhtLogCallback* log);
 

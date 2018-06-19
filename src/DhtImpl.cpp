@@ -283,7 +283,7 @@ SockAddr DhtImpl::ipv4ipv6_resolve(SockAddr const& peer)
 //--------------------------------------------------------------------------------
 
 DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
-	, DhtSaveCallback* save, DhtLoadCallback* load, ExternalIPCounter* eip, DHTEvents* dht_events)
+	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip, DHTEvents* dht_events)
 {
 	_ip_counter = eip;
 	_add_node_callback = NULL;
@@ -333,7 +333,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 
 	_dht_quota = 0;
 
-	Initialize(udp_socket_mgr, udp6_socket_mgr);
+	Initialize(callbacks_user_data, udp_socket_mgr, udp6_socket_mgr);
 
 	// initialize the put/get data stores
 	_immutablePutStore.SetCurrentTime(time(NULL));
@@ -417,7 +417,7 @@ bool DhtImpl::handleReadEvent(UDPSocketInterface *socket, byte *buffer
 /**
  * Initialize DHT
  */
-void DhtImpl::Initialize(UDPSocketInterface *udp_socket_mgr
+void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 	, UDPSocketInterface *udp6_socket_mgr )
 {
 	_udp_socket_mgr = udp_socket_mgr;
@@ -445,7 +445,7 @@ void DhtImpl::Initialize(UDPSocketInterface *udp_socket_mgr
 	RandomizeWriteToken();
 
 	// Load the DHT state
-	LoadState();
+	LoadState(user_data);
 
 	// initialize _lastLeadingAddress
 	if (_ip_counter) _ip_counter->GetIPv4(_lastLeadingAddress);
@@ -454,9 +454,9 @@ void DhtImpl::Initialize(UDPSocketInterface *udp_socket_mgr
 /**
  * Save the DHT state and disable DHT.
  */
-void DhtImpl::Shutdown()
+void DhtImpl::Shutdown(void* user_data)
 {
-	SaveState();
+	SaveState(user_data);
 	Enable(0,0); // Stop Dht
 }
 
@@ -1942,7 +1942,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 			sb("6:valuesl");
 			for(uint i=0; i!=n; i++) {
 				DhtID const& sid = (*sc)[i].id;
-                debug_log("get_peers answer: found %s", format_dht_id(sid).c_str());
+                debug_log("get_peers(incoming) response: found %s", format_dht_id(sid).c_str());
 				sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
 			}
 			sb("e");
@@ -3392,7 +3392,6 @@ void DhtImpl::Tick()
 {
 	// TODO: make these members. and they could probably be collapsed to 1
 	static int _1min_counter;
-	static int _10min_counter;
 	static int _4_sec_counter;
 
 	_dht_probe_quota = _dht_probe_rate;
@@ -3473,19 +3472,6 @@ void DhtImpl::Tick()
 		_refresh_buckets_counter = _ping_frequency * _ping_batching;
 		for (int i = 0; i < _ping_batching; ++i) {
 			PingStalestNode();
-		}
-	}
-
-	// Save State to disk every 10 minutes if bootstrapping complete
-	if (++_10min_counter == 60 * 10) {
-		_10min_counter = 0;
-
-		if (_dht_bootstrap == bootstrap_complete)
-		{
-			SaveState();
-
-			debug_log("10 minute counter, saving DHT state to disk."
-				, _dht_peers_count, _dht_bootstrap);
 		}
 	}
 
@@ -3805,7 +3791,7 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 // Save my peer id.
 // Don't save announced stuff.
 
-void DhtImpl::SaveState()
+void DhtImpl::SaveState(void* user_data)
 {
 	BencodedDict base;
 	BencodedDict *dict = &base;
@@ -3857,15 +3843,15 @@ void DhtImpl::SaveState()
 	dict->InsertInt("table_depth", (int)160 - lowest_span);
 
 	std::string b = base.Serialize();
-	_save_callback((const byte*)b.c_str(), b.size());
+	_save_callback(user_data, (const byte*)b.c_str(), b.size());
 }
 
-void DhtImpl::LoadState()
+void DhtImpl::LoadState(void* user_data)
 {
 	if (_load_callback == NULL) return;
 	BencEntity base;
 
-	_load_callback(&base);
+	_load_callback(user_data, &base);
 
 	int num_loaded = 0;
 
