@@ -437,8 +437,6 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 	_requests.init();
 
 	GenerateId();
-	if(_dht_events)
-		_dht_events->dht_id_has_changed(_my_id.sha1());
 
 	// Need to do this twice so prev_token becomes random too
 	RandomizeWriteToken();
@@ -449,6 +447,10 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 
 	// initialize _lastLeadingAddress
 	if (_ip_counter) _ip_counter->GetIPv4(_lastLeadingAddress);
+
+	// notify high level logic
+//	if(_dht_events)
+//		_dht_events->dht_id_has_changed(_my_id.sha1());
 }
 
 /**
