@@ -57,6 +57,7 @@ enum DhtProcessFlags
 
 class DHTEvents {
 public:
+	virtual void bootstrap_complete(bool success, sha1_hash new_id) = 0;
 	virtual void dht_id_has_changed( sha1_hash new_id) = 0;
 	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
 	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;

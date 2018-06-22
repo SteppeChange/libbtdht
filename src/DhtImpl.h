@@ -1808,14 +1808,9 @@ public:
 	~DhtImpl();
 	REFBASE;
 
-#ifdef _DEBUG_DHT
-	FILE* _lookup_log;
-
-	FILE* _bootstrap_log;
-	// timestamp of when we started bootstrap
 	uint _bootstrap_start;
-#endif
-#ifdef _DEBUG_DHT_INSTRUMENT
+
+	#ifdef _DEBUG_DHT_INSTRUMENT
 	FILE* _instrument_log;
 #endif
 

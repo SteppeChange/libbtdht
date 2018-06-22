@@ -1181,12 +1181,10 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			_dht_peers_count--;
 			assert(_dht_peers_count >= 0);
 
-#ifdef _DEBUG_DHT
-			if (_dht_bootstrap == valid_response_received && _bootstrap_log) {
-				fprintf(_bootstrap_log, "[%u] nodes: %u\n"
-					, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+			if (_dht_bootstrap == valid_response_received) {
+				debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 			}
-#endif
+
 		}
 		return; // nodes in the primary list and the reserve list should be mutually exclusive
 	}
@@ -1210,12 +1208,10 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			_dht_peers_count--;
 			assert(_dht_peers_count >= 0);
 
-#ifdef _DEBUG_DHT
-			if (_dht_bootstrap == valid_response_received && _bootstrap_log) {
-				fprintf(_bootstrap_log, "[%u] nodes: %u\n"
-					, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+			if (_dht_bootstrap == valid_response_received) {
+				debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 			}
-#endif
+
 		}
 		break;
 	}
@@ -2717,14 +2713,9 @@ void DhtImpl::DoBootstrap()
 	++_bootstrap_attempts;
 
 	debug_log("start bootstrap");
-#ifdef _DEBUG_DHT
 	_bootstrap_start = get_milliseconds();
-	if (_bootstrap_log) {
-		fprintf(_bootstrap_log, "[0] start\n");
-		fprintf(_bootstrap_log, "[%u] nodes: %u\n"
-			, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-	}
-#endif
+	debug_log("[0] start\n");
+	debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 	DhtID target = _my_id;
 	target.id[4] ^= 1;
 	// Here, "this" is an IDhtProcessCallbackListener*, which leads
@@ -3000,17 +2991,17 @@ void DhtImpl::ProcessCallback()
 	// That was due to the timeout error happened in the first DHT nodes lookup, which means we only
 	// connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
 	// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
-	if (_dht_peers_count >= 8) {
+	if (_dht_peers_count >= 2) {
 		_dht_bootstrap = bootstrap_complete;
 		_dht_bootstrap_failed = 0;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
 
-		debug_log("DhtImpl::ProcessCallback() [ bootstrap done (%d)]", _dht_bootstrap);
-#ifdef _DEBUG_DHT
-		if (_bootstrap_log)
-			fprintf(_bootstrap_log, "[%u] complete %u nodes\n\n\n"
-				, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-#endif
+		debug_log("DhtImpl::ProcessCallback() [ bootstrap done (%d)], %d miliseconds, %d peers",
+				  _dht_bootstrap, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+
+		if(_dht_events)
+			_dht_events->bootstrap_complete(true, _my_id.sha1());
+
 
 	} else {
 		// bootstrapping failed. retry again soon.
@@ -3029,11 +3020,11 @@ void DhtImpl::ProcessCallback()
 		}
 
         debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
-#ifdef _DEBUG_DHT
-		if (_bootstrap_log)
-			fprintf(_bootstrap_log, "[%u] failed %u nodes\n\n\n"
-				, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-#endif
+		debug_log("[%u] failed %u nodes\n\n\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+
+		if(_dht_events)
+			_dht_events->bootstrap_complete(false, _my_id.sha1());
+
 	}
 }
 
@@ -3616,12 +3607,9 @@ void DhtImpl::Restart() {
 	_refresh_buckets_counter = 0;
 	_dht_peers_count = 0;
 
-#ifdef _DEBUG_DHT
-	if (_dht_bootstrap == valid_response_received && _bootstrap_log) {
-		fprintf(_bootstrap_log, "[%u] nodes: %u\n"
-			, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+	if (_dht_bootstrap == valid_response_received) {
+		debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 	}
-#endif
 
 	// Initialize the buckets
 	for (int i = 0; i < 32; ++i) {
@@ -6293,13 +6281,9 @@ bool DhtBucket::RemoveFromList(DhtImpl* pDhtImpl, const DhtID &id, BucketListTyp
 		pDhtImpl->_dht_peers_count--;
 		assert(pDhtImpl->_dht_peers_count >= 0);
 
-#ifdef _DEBUG_DHT
-		if (pDhtImpl->_dht_bootstrap == DhtImpl::valid_response_received && pDhtImpl->_bootstrap_log) {
-			fprintf(pDhtImpl->_bootstrap_log, "[%u] nodes: %u\n"
-				, uint(get_milliseconds() - pDhtImpl->_bootstrap_start)
-				, pDhtImpl->_dht_peers_count);
+		if (pDhtImpl->_dht_bootstrap == DhtImpl::valid_response_received) {
+			debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - pDhtImpl->_bootstrap_start), pDhtImpl->_dht_peers_count);
 		}
-#endif
 		return true;
 	}
 	return false;
@@ -6443,13 +6427,9 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
 
-#ifdef _DEBUG_DHT
-		if (pDhtImpl->_dht_bootstrap == DhtImpl::valid_response_received && pDhtImpl->_bootstrap_log) {
-			fprintf(pDhtImpl->_bootstrap_log, "[%u] nodes: %u\n"
-				, uint(get_milliseconds() - pDhtImpl->_bootstrap_start)
-				, pDhtImpl->_dht_peers_count);
+		if (pDhtImpl->_dht_bootstrap == DhtImpl::valid_response_received) {
+			debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - pDhtImpl->_bootstrap_start), pDhtImpl->_dht_peers_count);
 		}
-#endif
 
 		debug_log("Routing table num_nodes=%d", pDhtImpl->_dht_peers_count);
 
