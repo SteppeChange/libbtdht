@@ -436,7 +436,7 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 	// Initialize the request list
 	_requests.init();
 
-	GenerateId();
+	Restart();
 
 	// Need to do this twice so prev_token becomes random too
 	RandomizeWriteToken();
@@ -448,9 +448,6 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 	// initialize _lastLeadingAddress
 	if (_ip_counter) _ip_counter->GetIPv4(_lastLeadingAddress);
 
-	// notify high level logic
-//	if(_dht_events)
-//		_dht_events->dht_id_has_changed(_my_id.sha1());
 }
 
 /**
@@ -545,13 +542,11 @@ void DhtImpl::SetId(byte new_id_bytes[DHT_ID_SIZE])
 {
 	CopyBytesToDhtID(_my_id, new_id_bytes);
 	DhtIDToBytes(_my_id_bytes, _my_id);
-	Restart();
 }
 
 void DhtImpl::SetId(DhtID id) {
 	DhtIDToBytes(_my_id_bytes, id);
 	CopyBytesToDhtID(_my_id, _my_id_bytes);
-	Restart();
 }
 
 void DhtImpl::GenerateId()
@@ -3000,7 +2995,7 @@ void DhtImpl::ProcessCallback()
 				  _dht_bootstrap, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 
 		if(_dht_events)
-			_dht_events->bootstrap_complete(true, _my_id.sha1());
+			_dht_events->bootstrap_state_changed(EBootSuccess, _my_id.sha1());
 
 
 	} else {
@@ -3023,7 +3018,7 @@ void DhtImpl::ProcessCallback()
 		debug_log("[%u] failed %u nodes\n\n\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 
 		if(_dht_events)
-			_dht_events->bootstrap_complete(false, _my_id.sha1());
+			_dht_events->bootstrap_state_changed(EBootFailed, _my_id.sha1());
 
 	}
 }
@@ -3561,6 +3556,12 @@ void DhtImpl::Restart() {
 *	5. Restart if it was enabled to begin with
 *
 **/
+
+	GenerateId();
+
+	if(_dht_events)
+		_dht_events->bootstrap_state_changed(EBootStart, _my_id.sha1());
+
 	bool old_g_dht_enabled = _dht_enabled;
 	Enable(0,_dht_rate); // Stop Dht...this also enables the bootstrap process
 
@@ -3919,10 +3920,7 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 
 		_lastLeadingAddress = tempWinner;
 
-		GenerateId();
 		Restart();
-		if(_dht_events)
-			_dht_events->dht_id_has_changed(_my_id.sha1());
 
 	}
 }
