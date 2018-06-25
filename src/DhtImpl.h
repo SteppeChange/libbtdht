@@ -1394,6 +1394,8 @@ public:
 
 	virtual char const* name() const override { return "FindNodeEventualy"; }
 
+	void Sucess(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr, int rtt);
+
 protected:
 	DhtPeerID found_peer;
 	DhtPeerID source_peer;

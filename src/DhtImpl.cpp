@@ -6610,6 +6610,7 @@ void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
 							found_peer = peer;
 							source_peer = peer_id;
 							Abort();
+							Sucess(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage(), 0);
 							return;
 						}
 					}
@@ -6650,6 +6651,21 @@ FindNodeEventualyDhtProcess::FindNodeEventualyDhtProcess(DhtImpl* pDhtImpl
 {
 }
 
+void FindNodeEventualyDhtProcess::Sucess(sockaddr_storage const& node_addr, sha1_hash const& source_id, sockaddr_storage const& source_addr, int rtt)
+{
+	if(success_fun) {
+		debug_log("FindNodeEventualyDhtProcess success:"
+				  "\n\tNode: %s %s  \n\tSource %s %s",
+				  format_dht_id(found_peer.id).c_str(), print_sockaddr(found_peer.addr).c_str(),
+				  format_dht_id(source_peer.id).c_str(), print_sockaddr(source_peer.addr).c_str());
+
+		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(),
+					source_peer.addr.get_sockaddr_storage(), 0);
+	}
+	success_fun = nullptr;
+
+}
+
 void FindNodeEventualyDhtProcess::CompleteThisProcess()
 {
 
@@ -6660,13 +6676,7 @@ void FindNodeEventualyDhtProcess::CompleteThisProcess()
 
 	if(found_peer.addr._port != INVALID_PORT)
 	{
-		debug_log("FindNodeEventualyDhtProcess::CompleteThisProcess success:"
-						  "\n\tNode: %s %s  \n\tSource %s %s",
-					  format_dht_id(found_peer.id).c_str(), print_sockaddr(found_peer.addr).c_str(),
-					  format_dht_id(source_peer.id).c_str(), print_sockaddr(source_peer.addr).c_str()
-                  );
-        
-		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage(), 0);
+		Sucess(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage(), 0);
 	}
 	else
 	{
