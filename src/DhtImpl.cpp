@@ -50,7 +50,7 @@ const int SALT_TOO_BIG = 207;
 const int CAS_MISMATCH = 301;
 const int LOWER_SEQ = 302;
 
-bool DhtVerifyHardenedID(const SockAddr& addr, byte const* node_id, DhtSHACallback* sha);
+bool DhtVerifyHardenedID(const SockAddr& addr, byte const* node_id);
 void DhtCalculateHardenedID(const SockAddr& addr, byte *node_id);
 
 int clamp(int v, int min, int max)
@@ -3990,9 +3990,19 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 		return NULL;
 	}
 
-	// Don't allow bootstrap servers into the rounting table
+	// Don't allow bootstrap servers into the routing table
 	if (IsBootstrap(id.addr))
 		return NULL;
+
+	// dont add nodes with wrong dhtid
+//	if(!seen) // new node
+	{
+		sha1_hash sha1 = id.id.sha1();
+		if (!DhtVerifyHardenedID(id.addr, sha1.value)) {
+			debug_log("Update rejected for: %s (untrusted dht id)", format_dht_id(id.id).c_str());
+			return NULL;
+		}
+	}
 
 	int bucket_id = GetBucket(id.id);
 
