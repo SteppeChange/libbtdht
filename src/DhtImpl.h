@@ -1827,7 +1827,7 @@ public:
 
 	void Close() override { _closing = true; }
 	bool Closing() { return _closing; }
-	void Shutdown(void* user_data) override;
+	void Shutdown() override;
 	void Tick() override;
 	void Enable(bool enabled, int rate) override;
 	bool IsEnabled() override;
@@ -2313,9 +2313,8 @@ public:
 		byte port[2];
 	};
 
-	void SaveState(void* user_data);
+	void SaveState(void* user_data) override;
 	void LoadState(void* user_data);
-
 
 };
 

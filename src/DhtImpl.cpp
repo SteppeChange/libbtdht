@@ -453,9 +453,8 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 /**
  * Save the DHT state and disable DHT.
  */
-void DhtImpl::Shutdown(void* user_data)
+void DhtImpl::Shutdown()
 {
-	SaveState(user_data);
 	Enable(0,0); // Stop Dht
 }
 

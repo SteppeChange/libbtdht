@@ -276,7 +276,7 @@ public:
 	virtual void AddNode(const SockAddr& addr, void* userdata, uint origin) = 0;
 	virtual bool CanAnnounce() = 0;
 	virtual void Close() = 0;
-	virtual void Shutdown(void* user_data) = 0;
+	virtual void Shutdown() = 0;
 	virtual void Initialize(void* user_data, UDPSocketInterface *, UDPSocketInterface *) = 0;
 	virtual bool IsEnabled() = 0;
 	virtual void ForceRefresh() = 0;
@@ -287,6 +287,8 @@ public:
 	virtual void EnableQuarantine(bool e) = 0;
 
 	virtual bool ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr) = 0;
+
+	virtual void SaveState(void* user_data) = 0;
 #ifdef _DEBUG_MEM_LEAK
 	virtual int FreeRequests() = 0;
 #endif
