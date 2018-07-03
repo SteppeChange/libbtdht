@@ -438,10 +438,6 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 
 	Restart();
 
-	// Need to do this twice so prev_token becomes random too
-	RandomizeWriteToken();
-	RandomizeWriteToken();
-
 	// Load the DHT state
 	LoadState(user_data);
 
@@ -537,6 +533,7 @@ bool DhtImpl::CanAnnounce()
 /**
  * Set the ID of this DHT client
  */
+
 void DhtImpl::SetId(byte new_id_bytes[DHT_ID_SIZE])
 {
 	CopyBytesToDhtID(_my_id, new_id_bytes);
@@ -3853,8 +3850,8 @@ void DhtImpl::LoadState(void* user_data)
 		// Load the ID
 		byte* id = (byte*)dict->GetString("id", DHT_ID_SIZE);
 		if (id) {
-			CopyBytesToDhtID(_my_id, id);
-			DhtIDToBytes(_my_id_bytes, _my_id);
+			SetId(id);
+			debug_log("Load node ID: \"%s\"", hexify(id).c_str());
 		}
 
 		size_t ip_len = 0;
