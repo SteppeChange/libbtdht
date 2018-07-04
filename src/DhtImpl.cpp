@@ -4652,7 +4652,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				}
 			}
 			if(callbackPointers.getPeersCallback)
-				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, hpeers);
+				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, hpeers, false);
 
 			if (numpeer != 0 && callbackPointers.addnodesCallback != NULL){
 #if g_log_dht
@@ -5046,6 +5046,9 @@ void GetPeersDhtProcess::CompleteThisProcess()
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
 	}
+
+	if(callbackPointers.getPeersCallback)
+		callbackPointers.getPeersCallback(callbackPointers.callbackContext, target.sha1().value, std::list<sha1_hash>(), true);
 
 	DhtProcessBase::CompleteThisProcess();
 }
