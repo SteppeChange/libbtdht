@@ -2378,57 +2378,6 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 }
 
 
-#if USE_HOLEPUNCH
-// when we get a punch request, send a tiny message to the specified
-// IP:port, in the hopes that our NAT will open up a pinhole to it
-bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int packetSize)
-{
-	if (!_dht_enabled) return false;
-
-	SockAddr dst;
-	bool ok = dst.from_compact(message.target_ip.b
-		, message.target_ip.len);
-	if (!ok) return false;
-	if (!dst.isv4()) return false;
-
-	byte record[6];
-	dst.compact(record, true);
-	sha1_hash h = _sha_callback(record, 6);
-	if (_recent_punches.test(h)) {
-		debug_log("SUPPRESSED PUNCH: %s", print_sockaddr(dst).c_str());
-		return true;
-	}
-	_recent_punches.add(h);
-
-	debug_log("PUNCHING %s", print_sockaddr(dst).c_str());
-
-	unsigned char buf[5];
-	smart_buffer sb(buf, sizeof(buf));
-
-	sb("de");
-	int len = sb.length();
-	assert(len >= 0);
-
-	assert(ValidateEncoding(buf, len));
-	Account(DHT_BW_OUT_TOTAL, len);
-
-	if (_packet_callback) {
-		_packet_callback(buf, len, false);
-	}
-
-	_dht_quota -= len;
-
-	UDPSocketInterface *socketMgr = (dst.isv4())
-		? _udp_socket_mgr
-		: _udp6_socket_mgr;
-
-	assert(socketMgr);
-	instrument_log('>', "punch", 'r', sb.length(), 0);
-	socketMgr->Send(dst, buf, sb.length());
-	return true;
-}
-#endif // USE_HOLEPUNCH
-
 bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSize) {
 
 	if(!message.id) {
@@ -2446,7 +2395,7 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 
 	// Nodes that are read_only do not respond to queries, so we don't
 	// want to add them to the buckets.  They also will not be pinged.
-	if (!message.read_only) {
+	if (!message.read_only && message.dhtCommand!=DHT_QUERY_PING) {
 		DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_INCOMING, false);
 		// Update version
 		if (peer != NULL) {
