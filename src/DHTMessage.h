@@ -49,10 +49,7 @@ enum DHTCommands
 	DHT_QUERY_VOTE,
 	DHT_QUERY_GET,
 	DHT_QUERY_PUT,
-	DHT_QUERY_PUNCH,
-#if USE_HOLEPUNCH
 	DHT_QUERY_PUNCH
-#endif
 };
 
 enum HolePunch

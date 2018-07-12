@@ -2395,7 +2395,7 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 
 	// Nodes that are read_only do not respond to queries, so we don't
 	// want to add them to the buckets.  They also will not be pinged.
-	if (!message.read_only && message.dhtCommand!=DHT_QUERY_PING) {
+	if (!message.read_only && message.dhtCommand!=DHT_QUERY_PING && message.dhtCommand!=DHT_QUERY_PUNCH) {
 		DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_INCOMING, false);
 		// Update version
 		if (peer != NULL) {
@@ -6367,7 +6367,14 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
         if(p->rtt == INT_MAX)
         {
             if(p->id.addr != candidateNode.id.addr)
+            {
                 debug_log("node addr was changed %s -> %s", print_sockaddr(p->id.addr).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
+#ifdef _DEBUG
+                std::string newaddr = print_sockaddr(candidateNode.id.addr);
+                if(newaddr.find("192.168")!=std::string::npos)
+                    error_log("node addr local %s", newaddr.c_str());
+#endif
+            }
             p->id.addr = candidateNode.id.addr;
         }
         
