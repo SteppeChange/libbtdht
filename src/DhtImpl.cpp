@@ -2433,11 +2433,13 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		return false;
 	}
 
+	std::string name = req == 0 ? "unknown" : req->_pListener->name();
+
 	trace_log("<<< response (%d), from :%s id:%s process:%s",
 			  Read32(message.transactionID.b),
 			  print_sockaddr(peerID.addr).c_str(),
 			  format_dht_id(peerID.id).c_str(),
-			  req == 0 ? "unknown" : req->_pListener->name());
+			  name.c_str());
 
 //	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
 //		int debug = 0;
@@ -2486,7 +2488,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
                   print_sockaddr(req->peer.addr).c_str(), print_sockaddr(peerID.addr).c_str());
 		return false;
 	}
-    
+
 	Account(DHT_BW_IN_REPL, pkt_size);
 
 	// It's possible that the peer uses a different port # for outgoing packets.
@@ -2498,29 +2500,44 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 
 	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
 
+
+	bool is_pong = false;
+	if(name=="DhtImpl")
+	{
+		DhtRequestListener<DhtImpl>* listener = static_cast<DhtRequestListener<DhtImpl>*>(req->_pListener);
+		if(listener->_pCallback == &DhtImpl::OnPong)
+			is_pong =  true;
+	}
+
 	// Update the internal tables with this peer's information
 	// The contacted attribute is set because it replied to a query.
-	DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_UNKNOWN, true, rtt);
+	DhtPeer *peer = 0;
+
+	if(!is_pong) // ping reply can be from local node, we need to exclude this influence
+		peer = Update(peerID, IDht::DHT_ORIGIN_UNKNOWN, true, rtt);
 
 	// Update version field
 	if (peer != NULL) {
 		peer->client.from_compact(message.version.b, message.version.len);
 	}
 
-	if (message.external_ip.len == 6) {
-		SockAddr myIp;
-		myIp.set_addr4(*((uint32 *) message.external_ip.b));
-		myIp.set_port(ReadBE16(message.external_ip.b+4));
-		CountExternalIPReport(myIp, req->peer.addr);
-	} else if (message.external_ip.len == 18) {
-		SockAddr myIp;
-		myIp.set_addr6(*((in6_addr *) message.external_ip.b));
-		myIp.set_port(ReadBE16(message.external_ip.b+16));
-		CountExternalIPReport(myIp, req->peer.addr);
+	if(!is_pong) {
+		if (message.external_ip.len == 6) {
+			SockAddr myIp;
+			myIp.set_addr4(*((uint32 *) message.external_ip.b));
+			myIp.set_port(ReadBE16(message.external_ip.b + 4));
+			CountExternalIPReport(myIp, req->peer.addr);
+		} else if (message.external_ip.len == 18) {
+			SockAddr myIp;
+			myIp.set_addr6(*((in6_addr *) message.external_ip.b));
+			myIp.set_port(ReadBE16(message.external_ip.b + 16));
+			CountExternalIPReport(myIp, req->peer.addr);
+		}
 	}
 
 	// Call the completion callback
 	req->_pListener->Callback(req->peer, req, message, (DhtProcessFlags)NORMAL_RESPONSE);
+
 	delete req->_pListener;
 	// Cleanup
 	delete req;

@@ -61,7 +61,7 @@ uint32 generate_node_id_prefix(const SockAddr& addr, int random)
 // See http://www.rasterbar.com/products/libtorrent/dht_sec.html
 bool DhtVerifyHardenedID(const SockAddr& addr, byte const* node_id)
 {
-	if (is_ip_local(addr)) return true;
+//	if (is_ip_local(addr)) return true;
 	uint seed = node_id[19];
 	uint32 crc32_hash = generate_node_id_prefix(addr, seed);
 //compare the first 21 bits only, so keep bits 17 to 21 only.

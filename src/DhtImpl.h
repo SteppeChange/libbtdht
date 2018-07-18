@@ -782,8 +782,7 @@ public:
 		return _pListener->name();
 	}
 
-protected:
-
+//protected:
 	T *_pListener;
 	ReplyCallback _pCallback;
 	void *_userdata;
