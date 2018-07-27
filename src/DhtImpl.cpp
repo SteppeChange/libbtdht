@@ -2960,9 +2960,8 @@ void DhtImpl::ProcessCallback()
 			_dht_events->bootstrap_state_changed(
 					EBootSuccess,
 					_my_id.sha1(),
-					print_sockaddr(_lastLeadingAddress).c_str(),
-					print_sockaddr(_udp_socket_mgr->GetBindAddr()).c_str()
-		);
+					_lastLeadingAddress.get_sockaddr_storage(),
+					_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	} else {
 		// bootstrapping failed. retry again soon.
@@ -2986,8 +2985,8 @@ void DhtImpl::ProcessCallback()
 		if(_dht_events)
 			_dht_events->bootstrap_state_changed(EBootFailed,
 												 _my_id.sha1(),
-												 print_sockaddr(_lastLeadingAddress).c_str(),
-												 print_sockaddr(_udp_socket_mgr->GetBindAddr()).c_str());
+												 _lastLeadingAddress.get_sockaddr_storage(),
+												 _udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	}
 }
@@ -3531,8 +3530,8 @@ void DhtImpl::Restart() {
 	if(_dht_events)
 		_dht_events->bootstrap_state_changed(EBootStart,
 											 _my_id.sha1(),
-											 print_sockaddr(_lastLeadingAddress).c_str(),
-											 print_sockaddr(_udp_socket_mgr->GetBindAddr()).c_str());
+											 _lastLeadingAddress.get_sockaddr_storage(),
+											 _udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	bool old_g_dht_enabled = _dht_enabled;
 	Enable(0,_dht_rate); // Stop Dht...this also enables the bootstrap process
