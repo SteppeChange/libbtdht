@@ -112,6 +112,12 @@ static void error_log(char const* fmt, Args ... args)
 }
 
 template<typename ... Args>
+static void warnings_log(char const* fmt, Args ... args)
+{
+	dht_log(DHTLogLevel::EDhtWarnings, fmt, args ...);
+}
+
+template<typename ... Args>
 static void trace_log(char const* fmt, Args ... args)
 {
     dht_log(DHTLogLevel::EDhtTrace, fmt, args ...);
@@ -2464,7 +2470,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
         // for bootstrup its wrong, see // _temp_nodes[c].id.id[4] = rand();
 		if (!IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
 			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
-            error_log("Error: Response ID != Request ID %s %s",
+			warnings_log("Warning: Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
                       format_dht_id(req->peer.id).c_str());
 
@@ -2484,9 +2490,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
-        error_log("Error: Response IP != Request IP %s %s",
+        warnings_log("Warning: Response IP != Request IP %s %s",
                   print_sockaddr(req->peer.addr).c_str(), print_sockaddr(peerID.addr).c_str());
-		return false;
 	}
 
 	Account(DHT_BW_IN_REPL, pkt_size);

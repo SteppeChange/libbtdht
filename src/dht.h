@@ -39,6 +39,7 @@ class BencEntity;
 
 enum DHTLogLevel {
     EDhtError,
+	EDhtWarnings,
     EDhtTrace,
     EDhtDebug,
     EDhtVerbose
