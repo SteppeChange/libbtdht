@@ -2427,13 +2427,6 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_size,
 		DhtRequest *req) {
 
-#if g_log_dht
-	if (req) {
-		assert(req->origin >= 0);
-		assert(req->origin < sizeof(g_dht_peertype_count) / sizeof(g_dht_peertype_count[0]));
-	}
-#endif
-
 	if (message.transactionID.len != 4) {
 		Account(DHT_INVALID_PR_BAD_TID_LENGTH, pkt_size);
 		return false;
@@ -2449,9 +2442,6 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 
 //	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
 //		int debug = 0;
-
-
-//	GetPeersDhtProcess : public DhtLookupScheduler : public DhtProcessBase // virtual char const* name() const = 0;
 
 	if (!req) {
 		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
@@ -4087,9 +4077,9 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 DhtFindNodeEntry* DhtLookupNodeList::FindQueriedPeer(const DhtPeerID &peer_id)
 {
 	for(unsigned int i=0; i!=numNodes; i++) {
-		if ((nodes[i].queried == QUERIED_YES || nodes[i].queried == QUERIED_SLOW) &&
-			nodes[i].id.id == peer_id.id)
-			return &nodes[i];
+		if ((_nodes[i].queried == QUERIED_YES || _nodes[i].queried == QUERIED_SLOW) &&
+			_nodes[i].id.id == peer_id.id)
+			return &_nodes[i];
 	}
 	return NULL;
 }
@@ -4097,7 +4087,7 @@ DhtFindNodeEntry* DhtLookupNodeList::FindQueriedPeer(const DhtPeerID &peer_id)
 void DhtLookupNodeList::InsertPeer(const DhtPeerID &id, const DhtID &target)
 {
 	uint i;
-	DhtFindNodeEntry *ep = nodes;
+	DhtFindNodeEntry *ep = _nodes;
 
 	// Locate the position where it should be inserted.
 	for(i=0; i<numNodes; i++, ep++) {
@@ -4109,18 +4099,18 @@ void DhtLookupNodeList::InsertPeer(const DhtPeerID &id, const DhtID &target)
 	}
 
 	for (int ip = i+1; ip < numNodes; ip++) {
-		if (nodes[ip].id.addr.ip_eq(id.addr))
+		if (_nodes[ip].id.addr.ip_eq(id.addr))
 			return; // duplicate ip address
 	}
 
 	// Bigger than all of them?
-	if (i >= lenof(nodes))
+	if (i >= lenof(_nodes))
 		return;
 
-	if (numNodes < lenof(nodes)) {
+	if (numNodes < lenof(_nodes)) {
 		numNodes++;
 	} else {
-		FreeNodeEntry(nodes[lenof(nodes)-1]);
+		FreeNodeEntry(_nodes[lenof(_nodes)-1]);
 	}
 
 	// Make space here?
@@ -4142,7 +4132,7 @@ void DhtLookupNodeList::InsertPeer(const DhtPeerID &id, const DhtID &target)
 DhtLookupNodeList::~DhtLookupNodeList()
 {
 	for(unsigned int x=0; x<numNodes; ++x)
-		FreeNodeEntry(nodes[x]);
+		FreeNodeEntry(_nodes[x]);
 }
 
 void DhtLookupNodeList::SetAllQueriedStatus(QueriedStatus status)
@@ -4156,13 +4146,13 @@ void DhtLookupNodeList::CompactList()
 	// Compact the entry table. Only keep the 'replied' ones.
 	unsigned int j = 0;
 	for(int i=0; i<numNodes; i++) {
-		if (nodes[i].queried != QUERIED_REPLIED) continue;
-		nodes[i].queried = QUERIED_NO;
+		if (_nodes[i].queried != QUERIED_REPLIED) continue;
+		_nodes[i].queried = QUERIED_NO;
 		if (j != i) {
-			FreeNodeEntry(nodes[j]);
-			nodes[j] = nodes[i];
+			FreeNodeEntry(_nodes[j]);
+			_nodes[j] = _nodes[i];
 			// zero out the copied item so we don't double-free
-			memset(&nodes[i], 0, sizeof(DhtFindNodeEntry));
+			memset(&_nodes[i], 0, sizeof(DhtFindNodeEntry));
 		}
 		j++;
 	}
@@ -6681,7 +6671,7 @@ void DhtLookupNodeList::DumpNodes()
 	debug_log("Lookup nodes:");
     for (int i = 0; i < size(); i++) {
 		debug_log("%d %s %s",
-				  i, format_dht_id(nodes[i].id.id).c_str(), print_sockaddr(nodes[i].id.addr).c_str());
+				  i, format_dht_id(_nodes[i].id.id).c_str(), print_sockaddr(_nodes[i].id.addr).c_str());
 	}
 };
 

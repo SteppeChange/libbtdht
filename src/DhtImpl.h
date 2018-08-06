@@ -1022,7 +1022,7 @@ class DhtLookupNodeList
 {
 	private:
 		unsigned int numNodes;	// Number of entries in node table
-		DhtFindNodeEntry nodes[KADEMLIA_K*8];		// Table of closest nodes
+		DhtFindNodeEntry _nodes[KADEMLIA_K*8];		// Table of closest nodes
 		static void FreeNodeEntry(DhtFindNodeEntry &ent) { if (ent.token.b) free(ent.token.b); }
 
 	protected:
@@ -1055,7 +1055,7 @@ class DhtLookupNodeList
 
 inline DhtLookupNodeList::DhtLookupNodeList():numNodes(0), seq_max(0)
 {
-	memset(nodes, 0, sizeof(nodes));
+	memset(_nodes, 0, sizeof(_nodes));
 }
 
 /**
@@ -1064,14 +1064,14 @@ Initializes the node list with the provided list of nodes.
 inline DhtLookupNodeList::DhtLookupNodeList(DhtPeerID** ids, unsigned int numId
 	, const DhtID &target):numNodes(0), seq_max(0)
 {
-	memset(nodes, 0, sizeof(nodes));
+	memset(_nodes, 0, sizeof(_nodes));
 	SetNodeIds(ids, numId, target);
 }
 
 inline DhtFindNodeEntry& DhtLookupNodeList::operator[](const unsigned int index)
 {
 	assert(index < numNodes);
-	return nodes[index];
+	return _nodes[index];
 }
 /**
 Set the status of the node at the specified index to the specified status.
@@ -1079,7 +1079,7 @@ Set the status of the node at the specified index to the specified status.
 inline void DhtLookupNodeList::SetQueriedStatus(unsigned int index, QueriedStatus status)
 {
 	assert(index < numNodes);
-	nodes[index].queried = status;
+	_nodes[index].queried = status;
 }
 
 
