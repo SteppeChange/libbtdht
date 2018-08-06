@@ -57,10 +57,23 @@ enum DhtProcessFlags
 };
 
 enum BootState {
+	EBootUnknown = - 1,
 	EBootStart = 0,
 	EBootSuccess = 1,
 	EBootFailed = 2,
 };
+
+inline std::string to_string(BootState const& st)
+{
+	switch(st)
+	{
+		case EBootUnknown: return "EBootUnknown";
+		case EBootStart: return "EBootStart";
+		case EBootSuccess: return "EBootSuccess";
+		case EBootFailed: return "EBootFailed";
+	}
+	return "Unknown";
+}
 
 class DHTEvents {
 public:

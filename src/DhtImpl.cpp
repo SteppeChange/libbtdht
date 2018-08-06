@@ -50,6 +50,9 @@ const int SALT_TOO_BIG = 207;
 const int CAS_MISMATCH = 301;
 const int LOWER_SEQ = 302;
 
+
+const int BOOT_COMPLETE = 2; // TO DO must be 8
+
 bool DhtVerifyHardenedID(const SockAddr& addr, byte const* node_id);
 void DhtCalculateHardenedID(const SockAddr& addr, byte *node_id);
 
@@ -2943,7 +2946,7 @@ void DhtImpl::ProcessCallback()
 	// That was due to the timeout error happened in the first DHT nodes lookup, which means we only
 	// connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
 	// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
-	if (_dht_peers_count >= 2) {
+	if (_dht_peers_count >= BOOT_COMPLETE) {
 		_dht_bootstrap = bootstrap_complete;
 		_dht_bootstrap_failed = 0;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
@@ -3545,10 +3548,6 @@ void DhtImpl::Restart() {
 		for (DhtPeer **peer = &_buckets[i]->peers.first(); *peer;) {
 			DhtPeer *p = *peer;
 
-#if g_log_dht
-			assert(p->origin >= 0);
-			assert(p->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 			// unlinknext will make peer point the following entry
 			// in the linked list, so there's no need to step forward
 			// explicitly.
@@ -3558,11 +3557,6 @@ void DhtImpl::Restart() {
 		}
 		for (DhtPeer **peer = &_buckets[i]->replacement_peers.first(); *peer;) {
 			DhtPeer *p = *peer;
-
-#if g_log_dht
-			assert(p->origin >= 0);
-			assert(p->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 
 			_buckets[i]->replacement_peers.unlinknext(peer);
 			p->next = NULL;
@@ -6418,6 +6412,18 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		debug_log("Routing table num_nodes=%d", pDhtImpl->_dht_peers_count);
 
 		if (pout) *pout = peer;
+
+		if (pDhtImpl->_dht_bootstrap == DhtImpl::not_bootstrapped && pDhtImpl->_dht_peers_count >= BOOT_COMPLETE) {
+
+			if (pDhtImpl->_dht_events)
+				pDhtImpl->_dht_events->bootstrap_state_changed(
+						EBootSuccess,
+						pDhtImpl->_my_id.sha1(),
+						pDhtImpl->_lastLeadingAddress.get_sockaddr_storage(),
+						pDhtImpl->_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
+		}
+
+
 		return true;
 	}
 
