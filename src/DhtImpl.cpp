@@ -4612,7 +4612,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 #if g_log_dht
 				dht_log("DhtLookupScheduler,callback,id,%d,time,%d\n", target.id[0], get_milliseconds());
 #endif
-				callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, (byte*)peers, numpeer);
+				callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, (byte*)peers, numpeer, false);
 			}
 			free(peers);
 		}
@@ -5288,7 +5288,15 @@ void AnnounceDhtProcess::ImplementationSpecificReplyProcess(void *userdata, cons
 		impl->UpdateError(peer_id, Read32(message.transactionID.b), flags & ICMP_ERROR);
 	}
 	if(message.dhtMessageType == DHT_RESPONSE){
-		debug_log("tid:(%d), it was announced at %s \n",  Read32(message.transactionID.b), print_sockip(peer_id.addr).c_str());
+		std::string node_addr = print_sockip(peer_id.addr);
+		debug_log("tid:(%d), it was announced at %s \n",  Read32(message.transactionID.b), node_addr.c_str());
+		// Tell it that we're done
+		if (callbackPointers.addnodesCallback) {
+			byte bytes[DHT_ID_SIZE];
+			DhtIDToBytes(bytes, target);
+			sha1_hash announcer = peer_id.id.sha1();
+			callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, announcer.value, 1, false);
+		}
 	}
 
 }
@@ -5302,7 +5310,7 @@ void AnnounceDhtProcess::CompleteThisProcess()
 	if (callbackPointers.addnodesCallback) {
 		byte bytes[DHT_ID_SIZE];
 		DhtIDToBytes(bytes, target);
-		callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, NULL, 0);
+		callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, NULL, 0, true);
 	}
 
 #if g_log_dht
@@ -5782,7 +5790,7 @@ void PutDhtProcess::CompleteThisProcess()
 	if (callbackPointers.addnodesCallback) {
 		byte bytes[DHT_ID_SIZE];
 		DhtIDToBytes(bytes, target);
-		callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, NULL, 0);
+		callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, NULL, 0, true);
 	}
 	signature.clear();
 

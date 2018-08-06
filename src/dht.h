@@ -88,8 +88,8 @@ public:
 // callback types used in the DHT
 typedef void DhtVoteCallback(void *ctx, const byte *target, int const* votes);
 typedef void DhtHashFileNameCallback(void *ctx, const byte *info_hash, const byte *file_name);
-typedef void DhtAddNodesCallback(void *ctx, const byte *info_hash, const byte *peers, uint num_peers);
-typedef void DhtGetPeersCallback(void *ctx, const byte *info_hash, std::list<sha1_hash> const& peers, bool last);
+typedef void DhtAddNodesCallback(void *ctx, const byte *info_hash, const byte *peers, uint num_peers, bool complete_process);
+typedef void DhtGetPeersCallback(void *ctx, const byte *info_hash, std::list<sha1_hash> const& peers, bool complete_process);
 typedef void DhtAddNodeResponseCallback(void*& userdata, bool is_response, SockAddr const& addr);
 typedef void DhtScrapeCallback(void *ctx, const byte *target, int downloaders, int seeds);
 typedef int DhtPutCallback(void * ctx, std::vector<char>& buffer, int64& seq, SockAddr src);

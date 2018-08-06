@@ -1914,11 +1914,6 @@ public:
 	//--------------------------------------------------------------------------------
 
 
-#ifdef DHT_SEARCH_TEST
-#define NUM_SEARCHES 10000
-	static bool search_running = false;
-#endif
-
 	DhtID _my_id;
 	byte _my_id_bytes[DHT_ID_SIZE];
 	byte _dht_utversion[4];
@@ -2205,15 +2200,6 @@ public:
 	bool IsCompatibleIPPeerIDPair(const SockAddr& addr, DhtID const& id);
 
 	void AddIP(smart_buffer& sb, byte const* id, SockAddr const& addr);
-
-#if USE_DHTFEED
-	void dht_name_resolved(const byte *info_hash, const byte *file_name);
-	static void dht_name_resolved_static(void *ctx, const byte *info_hash, const byte *file_name);
-	void dht_on_scrape(const byte *info_hash, int downloaders, int seeds);
-	static void dht_on_scrape_static(void *ctx, const byte *info_hash, int downloaders, int seeds);
-	void add_to_dht_feed(byte const* info_hash, char const* file_name);
-	static void add_to_dht_feed_static(void *ctx, byte const* info_hash, char const* file_name);
-#endif
 
 	void put_transaction_id(smart_buffer& sb, Buffer tid);
 	void put_version(smart_buffer& sb);
