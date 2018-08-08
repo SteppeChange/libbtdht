@@ -4575,7 +4575,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		uint num_nodes = nodes.len / node_size;
 		if (nodes.b && nodes.len % node_size == 0) {
 			// Insert all peers into my internal list.
-			debug_log("lookup response has %d nodes", process_id(), num_nodes);
+			debug_log("[%u] lookup response has %d nodes", process_id(), num_nodes);
 
 			while (num_nodes != 0) {
 				DhtPeerID peer;
