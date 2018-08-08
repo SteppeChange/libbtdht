@@ -1837,8 +1837,6 @@ public:
 	void SetPingBatching(int num_pings) override;
 	void EnableQuarantine(bool e) override;
 
-	bool CanAnnounce() override;
-
 	void Vote(void *ctx, const sha1_hash* info_hash, int vote, DhtVoteCallback* callb) override;
 
 	void SetId(byte new_id_bytes[DHT_ID_SIZE]) override;
@@ -2002,9 +2000,6 @@ public:
 	uint32 _prev_token[2];
 	int _dht_bootstrap; // Possible states in enum below
 
-	// a counter used to compute the back-off time for bootstrap re-tries
-	// it's reset when we get a response from the bootstrap server.
-	int _dht_bootstrap_failed;
 	int _dht_busy;
 	bool _allow_new_job;
 	bool _dht_enabled;

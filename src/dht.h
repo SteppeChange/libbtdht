@@ -289,7 +289,6 @@ public:
 
 	// userdata pointer is passed on to the AddNodeReponseCallback
 	virtual void AddNode(const SockAddr& addr, void* userdata, uint origin) = 0;
-	virtual bool CanAnnounce() = 0;
 	virtual void Close() = 0;
 	virtual void Shutdown() = 0;
 	virtual void Initialize(void* user_data, UDPSocketInterface *, UDPSocketInterface *) = 0;

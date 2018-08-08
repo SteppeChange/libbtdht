@@ -309,7 +309,6 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_events = dht_events;
 
 	_dht_bootstrap = not_bootstrapped;
-	_dht_bootstrap_failed = 0;
 	_bootstrap_attempts = 0;
 	_allow_new_job = false;
 	_refresh_buckets_counter = -1;
@@ -524,19 +523,6 @@ void DhtImpl::SetPingBatching(int num_pings)
 void DhtImpl::ForceRefresh()
 {
 	_refresh_buckets_counter = 0;
-}
-
-/**
- * Return true once bootstrap is complete every 4 seconds   // 4 seconds limits the amount of DHT traffic
- */
-bool DhtImpl::CanAnnounce()
-{
-	debug_log("CanAnnounce() [bootstrap=%d] = %d", _dht_bootstrap
-		, !(_dht_bootstrap != bootstrap_complete  || !_allow_new_job || _dht_peers_count < 32));
-
-	if (_dht_bootstrap != bootstrap_complete  || !_allow_new_job || _dht_peers_count < 32)
-		return false;
-	return true;
 }
 
 /**
@@ -2742,26 +2728,6 @@ void DhtImpl::DoFindNodes(DhtID const& target,
 	dpm->Start();
 }
 
-#ifdef DHT_SEARCH_TEST
-void DhtImpl::RunSearches()
-{
-	static int started_searches = 0;
-	if ( CanAnnounce() && started_searches < NUM_SEARCHES && !search_running ) {
-		// keep from overloading the network
-		//search_running = true;
-		started_searches++;
-		btprintf("%d\n", started_searches);
-		DhtID target;
-		for (size_t i = 0; i < 5; i++) {
-			target.id[i] = rand();
-		}
-		DhtProcess* p = DoFindNodes(target, NULL, 0);
-		p->process_listener = (IDhtProcessCallbackListener *)5;
-		_allow_new_job = false;
-	}
-}
-#endif
-
 void DhtImpl::DoVote(const DhtID &target, int vote, DhtVoteCallback* callb, void *ctx, int flags)
 {
 	// voting is a two stage process,
@@ -2948,7 +2914,6 @@ void DhtImpl::ProcessCallback()
 	// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
 	if (_dht_peers_count >= BOOT_COMPLETE) {
 		_dht_bootstrap = bootstrap_complete;
-		_dht_bootstrap_failed = 0;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
 
 		debug_log("DhtImpl::ProcessCallback() [ bootstrap done (%d)], %d miliseconds, %d peers",
@@ -2962,20 +2927,7 @@ void DhtImpl::ProcessCallback()
 					_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	} else {
-		// bootstrapping failed. retry again soon.
-		// 15s, 30s, 1m, 2m, 4m etc.
-		// never wait more than 24 hours - 60 * 24 = 1440
-		// so max for shift is 2 ^ 13 = 16384 or 1 << 14
-		assert(_dht_bootstrap_failed >= 0 && _dht_bootstrap_failed <= 14);
-		_dht_bootstrap_failed = (std::max)(0, _dht_bootstrap_failed);
-		if (_dht_bootstrap_failed < 14) {
-			_dht_bootstrap = 15 * (1 << _dht_bootstrap_failed);
-			++_dht_bootstrap_failed;
-		} else {
-			// if we've failed too many times, try once every 24 hours.
-			// this is the ceiling of our exponential back-off.
-			_dht_bootstrap = 60 * 60 * 24;
-		}
+		_dht_bootstrap = 15; // 15 sec time out for boot restart
 
         debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
 		debug_log("[%u] failed %u nodes\n\n\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
