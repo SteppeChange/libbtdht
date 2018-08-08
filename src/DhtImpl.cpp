@@ -38,8 +38,9 @@ limitations under the License.
 #include <limits>
 #include <netdb.h>
 #include <memory>
-#include <arpa/inet.h>
 
+
+#include "logger.h"
 
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 const char MUTABLE_PAYLOAD_FORMAT[] = "3:seqi%" PRId64 "e1:v";
@@ -68,7 +69,7 @@ void log_to_stderr(int level, char const* str)
 	fprintf(stderr, "DHT: [%d] %s\n", level, str);
 }
 
-static DhtLogCallback* g_logger = &log_to_stderr;
+DhtLogCallback* g_logger = &log_to_stderr;
 
 void set_log_callback(DhtLogCallback* log)
 {
@@ -90,103 +91,6 @@ uint prebitcmp(const uint32 *a, const uint32 *b, size_t size) { // Simple dirty 
 }
 
 uint g_dht_peertype_count[IDht::DHT_ORIGIN_COUNT] = {0,0,0,0,0};
-
-
-// http://fuckingclangwarnings.com
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-security"
-template<typename ... Args>
-static void dht_log(DHTLogLevel level, char const* fmt, Args ... args)
-{
-    size_t size = snprintf(nullptr, 0, fmt, args ...) + 1;
-    std::unique_ptr<char[]> buf(new char[size]);
-    
-    snprintf(buf.get(), size, fmt, args ...);
-    std::string formatted(buf.get(), buf.get() + size - 1);
-    
-    (*g_logger)(static_cast<int>(level), formatted.c_str());
-}
-#pragma clang diagnostic pop
-
-template<typename ... Args>
-static void error_log(char const* fmt, Args ... args)
-{
-    dht_log(DHTLogLevel::EDhtError, fmt, args ...);
-}
-
-template<typename ... Args>
-static void warnings_log(char const* fmt, Args ... args)
-{
-	dht_log(DHTLogLevel::EDhtWarnings, fmt, args ...);
-}
-
-template<typename ... Args>
-static void trace_log(char const* fmt, Args ... args)
-{
-    dht_log(DHTLogLevel::EDhtTrace, fmt, args ...);
-}
-
-template<typename ... Args>
-static void debug_log(char const* fmt, Args ... args)
-{
-    dht_log(DHTLogLevel::EDhtDebug, fmt, args ...);
-}
-
-template<typename ... Args>
-static void verbose_log(char const* fmt, Args ... args)
-{
-    dht_log(DHTLogLevel::EDhtVerbose, fmt, args ...);
-}
-
-
-// TODO: factor this into btutils sockaddr
-std::string print_sockaddr(SockAddr const& addr)
-{
-    char address[255]; // INET_ADDRSTRLEN
-    memset(&address, 0, sizeof(address));
-    int port = 0;
-    size_t end = 0;
-    sockaddr_storage const& sa = addr.get_sockaddr_storage();
-    if (sa.ss_family == AF_INET6) {
-        address[0]='[';
-        inet_ntop( AF_INET6, &(((struct sockaddr_in6 const *)&sa)->sin6_addr), address+1, sizeof(address)-1 );
-        address[strlen(address)]=']';
-        port = ((struct sockaddr_in6 const *)&sa)->sin6_port;
-    }
-    if (sa.ss_family == AF_INET) {
-        inet_ntop( AF_INET, &(((struct sockaddr_in const *)&sa)->sin_addr), address, sizeof(address) );
-        port = ((struct sockaddr_in const *)&sa)->sin_port;
-    }
-    
-    end = strlen(address);
-    snprintf(address+end, sizeof(address)-end, ":%u", ntohs(port));
-    return address;
-
-}
-
-
-std::string print_sockip(SockAddr const& addr)
-{
-	char buf[256];
-	if (addr.isv6()) {
-		in6_addr a = addr.get_addr6();
-		int offset = 0;
-		buf[offset++] = '[';
-		for (int i = 0; i < 16; ++i)
-			offset += snprintf(buf + offset,
-							   sizeof(buf) - offset,
-							   ":%02x",
-							   a.s6_addr[i]);
-	} else {
-		uint a = addr.get_addr4();
-		snprintf(buf, sizeof(buf), "%u.%u.%u.%u"
-				, (a >> 24) & 0xff
-				, (a >> 16) & 0xff
-				, (a >> 8) & 0xff
-				, a & 0xff);
-	}
-	return buf;
-}
 
 #ifdef _MSC_VER
 #define PRIu32 "u"
@@ -2689,11 +2593,7 @@ void DhtImpl::DoBootstrap()
 	// get peers in those nodes
 	DhtProcessBase* p = FindNodeDhtProcess::Create(this, *dpm, target, cbPtrs
 		, KADEMLIA_LOOKUP_OUTSTANDING, 0);
-#ifdef _DEBUG_DHT
-	if (_lookup_log)
-		fprintf(_lookup_log, "[%u] [%u] [%s]: START-BOOTSTRAP\n"
-			, uint(get_milliseconds()), p->process_id(), p->name());
-#endif
+
 	dpm->AddDhtProcess(p);
 	dpm->Start();
 
@@ -3815,9 +3715,9 @@ int DhtImpl::GetNumPutItems()
 	return _immutablePutStore.pair_list.size();
 }
 
-// TODO: The external IP reports from non-DHT sources don't
-// pass through here.  They are counted, but they just won't
-// pass through here
+// addr - new ip reported in responce
+// voter - ip who responce on request
+
 void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter )
 {
 	if (_ip_counter == NULL) return;
@@ -4169,11 +4069,6 @@ void DhtProcessBase::Abort()
 
 void DhtProcessBase::CompleteThisProcess()
 {
-#ifdef _DEBUG_DHT
-	if (impl->_lookup_log)
-		fprintf(impl->_lookup_log, "[%u] [%u] [%s]: COMPLETE\n"
-			, uint(get_milliseconds()), process_id(), name());
-#endif
 
 	debug_log("[%u] COMPLETED total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
@@ -4402,11 +4297,6 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
         
 		verbose_log("[%u] *** 1ST-TIMEOUT tid=%d", process_id(), req->tid);
 
-#ifdef _DEBUG_DHT
-		if (impl->_lookup_log)
-			fprintf(impl->_lookup_log, "[%u] [%u] [%s]: 1ST-TIMEOUT %s\n"
-				, uint(get_milliseconds()), process_id(), name(), print_sockaddr(peer_id.addr).c_str());
-#endif
 		DhtFindNodeEntry *dfnh = processManager.FindQueriedPeer(peer_id);
 		if (dfnh) dfnh->queried = QUERIED_SLOW;
 		// put another request in flight since this peer is slow to reply (and may time-out in the future)
@@ -4425,11 +4315,6 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 
 		debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
 
-#ifdef _DEBUG_DHT
-		if (impl->_lookup_log)
-			fprintf(impl->_lookup_log, "[%u] [%u] [%s]: TIMEOUT %s\n"
-				, uint(get_milliseconds()), process_id(), name(), print_sockaddr(peer_id.addr).c_str());
-#endif
 		// put another request in flight since this peer is dead from ICMP
 		// (a slow peer that times-out already had a replacement query launched)
 		if(flags & ICMP_ERROR){
@@ -4445,15 +4330,6 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	// a normal response, let the derived class handle it
 #if g_log_dht
 	dht_log("DhtLookupScheduler,normal_reply,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
-
-#ifdef _DEBUG_DHT
-	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
-
-	if (impl->_lookup_log)
-		fprintf(impl->_lookup_log, "[%u] [%u] [%s]: <- %s (rtt:%d ms)\n"
-			, uint(get_milliseconds()), process_id(), name()
-			, print_sockaddr(peer_id.addr).c_str(), rtt);
 #endif
 
 	ImplementationSpecificReplyProcess(userdata, peer_id, message, flags);
@@ -4935,7 +4811,7 @@ const char* const GetPeersDhtProcess::ArgsNamesStr[] =
 
 void GetPeersDhtProcess::CompleteThisProcess()
 {
-	debug_log("GetPeersDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
+	debug_log("GetPeersDhtProcess completed id:%d time:%d\n", target.id[0], get_microseconds());
 
 	debug_log("[%u] PRE-COMPACT total=%d", process_id() , processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {

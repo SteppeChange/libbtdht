@@ -49,7 +49,8 @@ set(SOURCE_FILES
         src/DHTMessage.cpp
         src/DHTMessage.h
         src/ExternalIPCounter.cpp
-        src/ExternalIPCounter.h)
+        src/ExternalIPCounter.h
+        src/logger.h)
 
 add_library(btdht ${SOURCE_FILES})
 

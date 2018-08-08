@@ -16,9 +16,14 @@ limitations under the License.
 
 #include "ExternalIPCounter.h"
 #include "sockaddr.h" // for SockAddr, is_ip_local
+#include "logger.h"
 
 #include <utility> // for std::make_pair
 #include <time.h>
+
+
+std::string print_sockaddr(SockAddr const& addr);
+
 
 ExternalIPCounter::ExternalIPCounter(SHACallback* sha)
 	: _winnerV4(_map.end()), _winnerV6(_map.end()), _HeatStarted(0)
@@ -103,6 +108,14 @@ void ExternalIPCounter::CountIP( const SockAddr& addr, int weight ) {
 
 	// attempt to insert this vote
 	std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, weight));
+
+	if(_map.size()>1)
+	{
+        warnings_log("May be symmetric NAT detected\n");
+		for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
+			debug_log("External IP: %s\n", print_sockaddr(it->first).c_str());
+		}
+	};
 
 	// if the new IP wasn't inserted, it's already in there
 	// increase the vote counter
