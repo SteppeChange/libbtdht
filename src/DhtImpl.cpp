@@ -1187,7 +1187,7 @@ int DhtImpl::AssembleNodeList(const DhtID &target, DhtPeerID** ids
 		_temp_nodes.resize(numwant - num);
 
 		int c = 0;
-		for (std::vector<SockAddr>::iterator i = _bootstrap_routers.begin()
+		for (auto i = _bootstrap_routers.begin()
 			, end(_bootstrap_routers.end()); i != end && num < numwant; ++i, ++c)
 		{
 			// just fake the id to match the target, so this is at the top
@@ -2988,9 +2988,9 @@ void DhtImpl::AddNode(const SockAddr& addr, void* userdata, uint origin)
 
 void DhtImpl::AddBootstrapNode(SockAddr const& addr)
 {
-	_bootstrap_routers.push_back(addr);
+	_bootstrap_routers.insert(addr);
 
-	for(int i = 0; i < _buckets.size(); i++) {
+    for(int i = 0; i < _buckets.size(); i++) {
 		DhtBucket& bucket = *_buckets[i];
 
 		for (DhtPeer **peer = &bucket.peers.first(); *peer; peer=&(*peer)->next) {

@@ -2086,7 +2086,7 @@ public:
 	UDPSocketInterface *_udp6_socket_mgr;
 	DHTEvents* _dht_events;
 	SockAddr _lastLeadingAddress;	// For tracking external voting of our ip
-	std::vector<SockAddr> _bootstrap_routers;
+	std::set<SockAddr> _bootstrap_routers;
 
 	// this is used temporarily when assembling the node list. If we need to
 	// add bootstrap routers to the list, they need to be allocated somewhere
