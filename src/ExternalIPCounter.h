@@ -30,6 +30,11 @@ limitations under the License.
 // allows the dht client to define what SHA-1 implementation to use
 typedef sha1_hash SHACallback(byte const* buf, int len);
 
+class IPEvents {
+	public:
+		virtual void symmetric_NAT_detected() = 0;
+};
+
 struct ip_change_observer {
 	virtual ~ip_change_observer() {}
 	virtual void on_ip_change(SockAddr const & new_ip) = 0;
@@ -38,7 +43,7 @@ struct ip_change_observer {
 class ExternalIPCounter
 {
 public:
-	ExternalIPCounter(SHACallback* sha);
+	ExternalIPCounter(SHACallback* sha, IPEvents* events);
 	void set_ip_change_observer(ip_change_observer * ip_observer){_ip_change_observer = ip_observer;}
 	void CountIP( const SockAddr& addr, const SockAddr& voter, int weight = 1);
 	void CountIP( const SockAddr& addr, int weight = 1 );
@@ -71,6 +76,7 @@ private:
 	int _last_votes6;
 	ip_change_observer * _ip_change_observer;
 	SHACallback* _sha_callback;
+	IPEvents* _events;
 };
 
 

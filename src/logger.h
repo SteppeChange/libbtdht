@@ -56,7 +56,7 @@ static void verbose_log(char const* fmt, Args ... args)
 
 
 // TODO: factor this into btutils sockaddr
-static std::string print_sockaddr(SockAddr const& addr)
+inline std::string print_sockaddr(SockAddr const& addr)
 {
 	char address[255]; // INET_ADDRSTRLEN
 	memset(&address, 0, sizeof(address));
@@ -81,7 +81,7 @@ static std::string print_sockaddr(SockAddr const& addr)
 }
 
 
-static std::string print_sockip(SockAddr const& addr)
+inline std::string print_sockip(SockAddr const& addr)
 {
 	char buf[256];
 	if (addr.isv6()) {

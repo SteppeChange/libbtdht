@@ -25,13 +25,14 @@ limitations under the License.
 std::string print_sockaddr(SockAddr const& addr);
 
 
-ExternalIPCounter::ExternalIPCounter(SHACallback* sha)
+ExternalIPCounter::ExternalIPCounter(SHACallback* sha, IPEvents* events)
 	: _winnerV4(_map.end()), _winnerV6(_map.end()), _HeatStarted(0)
 	, _TotalVotes(0)
 	, _last_votes4(0)
 	, _last_votes6(0)
 	, _ip_change_observer(NULL)
 	, _sha_callback(sha)
+	, _events(events)
 {}
 
 void ExternalIPCounter::Rotate()
@@ -109,12 +110,15 @@ void ExternalIPCounter::CountIP( const SockAddr& addr, int weight ) {
 	// attempt to insert this vote
 	std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, weight));
 
-	if(_map.size()>1)
+	size_t ex_ips = _map.size();
+	if(ex_ips==3) // 3 different ip's
 	{
         warnings_log("May be symmetric NAT detected\n");
 		for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
-			debug_log("External IP: %s\n", print_sockaddr(it->first).c_str());
+			debug_log("Unique external IP: %s\n", print_sockaddr(it->first).c_str());
 		}
+		if(_events)
+			_events->symmetric_NAT_detected();
 	};
 
 	// if the new IP wasn't inserted, it's already in there
