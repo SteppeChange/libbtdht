@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 #include "dht.h"
+#include <memory>
 
 
 typedef void DhtLogCallback(int level, char const* str);
