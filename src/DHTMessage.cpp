@@ -230,8 +230,11 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		punchId = *(reinterpret_cast<int*>(&(punchIdStr.b[0])));
 		if(punchType==HPRelay)
 			punchExecutor_ip.b = (byte*)args->GetString("eip", &punchExecutor_ip.len);
-		if(punchType==HPRequest || punchType==HPRelay)
-			punchTarget_ip.b = (byte*)args->GetString("tip", &punchTarget_ip.len);
+		if(punchType==HPRequest || punchType==HPRelay) {
+			punchTarget_local_ip.b = (byte *) args->GetString("tlip", &punchTarget_local_ip.len);
+			punchTarget_public_ip.b = (byte *) args->GetString("tpip", &punchTarget_public_ip.len);
+			punchTarget_relay_ip.b = (byte *) args->GetString("trip", &punchTarget_relay_ip.len);
+		}
 	}
 	else if (strcmp(command,"ping") == 0) {
 		dhtCommand = DHT_QUERY_PING;
@@ -303,7 +306,9 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 
 	punchType = src.punchType;
 	punchId = src.punchId;
-	punchTarget_ip = src.punchTarget_ip;
+	punchTarget_local_ip = src.punchTarget_local_ip;
+	punchTarget_public_ip = src.punchTarget_public_ip;
+	punchTarget_relay_ip = src.punchTarget_relay_ip;
 	punchExecutor_ip = src.punchExecutor_ip;
 
 	// Warning:  If this was set, it will still point to the dictionary

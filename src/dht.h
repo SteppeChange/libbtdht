@@ -79,6 +79,7 @@ class DHTEvents {
 public:
 	virtual void bootstrap_state_changed(BootState state, sha1_hash new_id, sockaddr_storage const& public_address, sockaddr_storage const& local_address) = 0;
 	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
+	virtual void dht_recv_punch_request_relay(int punch_id, sockaddr_storage const &src_addr) = 0;
 	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
 
 //	virtual ~DHTEvents() {};
@@ -261,7 +262,11 @@ public:
 
 	*/
 	virtual void punch_test(int punch_id, SockAddr const& target) = 0;
-	virtual void punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay) = 0;
+	virtual void punch_relay(int punch_id,
+							 SockAddr const& target_local,
+							 SockAddr const& target_public,
+							 SockAddr const& target_relay,
+							 SockAddr const& executor, SockAddr const& relay) = 0;
 	virtual void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;

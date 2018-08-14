@@ -2246,16 +2246,40 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	if (_dht_events && message.punchType == HPTest)
 		_dht_events->dht_recv_punch_test(message.punchId, peerID.addr.get_sockaddr_storage());
 
-	SockAddr punchTarget;
+	SockAddr punchTargetLocal;
+	SockAddr punchTargetPublic;
+	SockAddr punchTargetRelay;
 	SockAddr punchExecutor;
 
 	if (message.punchType == HPRelay || message.punchType == HPRequest) {
-		bool ok = punchTarget.from_compact(message.punchTarget_ip.b, message.punchTarget_ip.len);
-		if (!ok)
-        {
-            error_log("punchTarget.from_compact failed");
-            return false;
-        }
+		if(message.punchTarget_local_ip.len) {
+			bool ok = punchTargetLocal.from_compact(message.punchTarget_local_ip.b, message.punchTarget_local_ip.len);
+			if (!ok) {
+				error_log("punchTargetLocal.from_compact failed");
+				return false;
+			}
+		}
+		if(message.punchTarget_public_ip.len) {
+			bool ok = punchTargetPublic.from_compact(message.punchTarget_public_ip.b, message.punchTarget_public_ip.len);
+			if (!ok) {
+				error_log("punchTargetPublic.from_compact failed");
+				return false;
+			}
+		}
+		if(message.punchTarget_relay_ip.len) {
+			bool ok = punchTargetRelay.from_compact(message.punchTarget_relay_ip.b, message.punchTarget_relay_ip.len);
+			if (!ok) {
+				error_log("punchTargetRelay.from_compact failed");
+				return false;
+			}
+		}
+	}
+
+	if (message.punchType == HPRequest) {
+		punch_test(message.punchId, punchTargetLocal);
+		punch_test(message.punchId, punchTargetPublic);
+		if (_dht_events)
+			_dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage());
 	}
 
 	if (message.punchType == HPRelay) {
@@ -2265,13 +2289,8 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
             error_log("punchExecutor.from_compact failed");
             return false;
         }
+		punch_request(message.punchId, punchTargetLocal, punchTargetPublic, punchTargetRelay, punchExecutor);
 	}
-
-	if (message.punchType == HPRelay)
-		punch_request(message.punchId, punchTarget, punchExecutor);
-
-	if (message.punchType == HPRequest)
-		punch_test(message.punchId, punchTarget);
 
 	return true;
 }
@@ -6520,30 +6539,58 @@ void DhtLookupNodeList::DumpNodes()
 
 void DhtImpl::punch_test(int punch_id, SockAddr const& target)
 {
-	punch(HPTest, punch_id, target, 0, 0);
+	punch(HPTest, punch_id, &target, 0, 0, 0, 0);
 }
 
-void DhtImpl::punch_relay(int punch_id, SockAddr const& target, SockAddr const& executor, SockAddr const& relay)
+void DhtImpl::punch_relay(int punch_id,
+						  SockAddr const& target_local,
+						  SockAddr const& target_public,
+						  SockAddr const& target_relay,
+						  SockAddr const& executor, SockAddr const& relay)
 {
-	punch(HPRelay, punch_id, target, &executor, &relay);
+	punch(HPRelay, punch_id, &target_local, &target_public, &target_relay, &executor, &relay);
 }
 
-void DhtImpl::punch_request(int punch_id, SockAddr const& target, SockAddr const& executor)
+void DhtImpl::punch_request(int punch_id,
+							SockAddr const& target_local,
+							SockAddr const& target_public,
+							SockAddr const& target_relay,
+							SockAddr const& executor)
 {
-	punch(HPRequest, punch_id, target, &executor, 0);
+	punch(HPRequest, punch_id, &target_local, &target_public, &target_relay, &executor, 0);
 }
 
-void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAddr const* executor, SockAddr const* relay)
+void DhtImpl::punch(HolePunch type, int punch_id,
+					SockAddr const* target_local, SockAddr const* target_public, SockAddr const* target_relay,
+					SockAddr const* executor,
+					SockAddr const* relay)
 {
 	unsigned char buf[240];
 	smart_buffer sb(buf, sizeof(buf));
 
     // to do there is smart_buffer& operator() (SockAddr const& value)
 
-	unsigned char target_ip[20];
-	memset(&target_ip, 0, sizeof(target_ip));
-	size_t tip_len = target.compact(target_ip, true);
-	assert(tip_len == 6 || tip_len == 18);
+	unsigned char target_local_ip[20];
+	unsigned char target_public_ip[20];
+	unsigned char target_relay_ip[20];
+	memset(&target_local_ip, 0, sizeof(target_local_ip));
+	memset(&target_public_ip, 0, sizeof(target_public_ip));
+	memset(&target_relay_ip, 0, sizeof(target_relay_ip));
+	size_t tlip_len = 0;
+	size_t tpip_len = 0;
+	size_t trip_len = 0;
+	if(target_local) {
+		tlip_len = target_local->compact(target_local_ip, true);
+		assert(tlip_len == 6 || tlip_len == 18);
+	}
+	if(target_public) {
+		tpip_len = target_public->compact(target_public_ip, true);
+		assert(tpip_len == 6 || tpip_len == 18);
+	}
+	if(target_relay) {
+		trip_len = target_relay->compact(target_relay_ip, true);
+		assert(trip_len == 6 || trip_len == 18);
+	}
 
 	unsigned char executor_ip[20];
 	memset(&executor_ip, 0, sizeof(executor_ip));
@@ -6554,23 +6601,29 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 	}
 
     if(type==HPRelay)
-        trace_log(">>> punch %s(%d) to %s test target: %s executor: %s ",
+        trace_log(">>> punch %s(%d) to %s test target: %s %s %s executor: %s ",
                   to_str(type).c_str(),
                   punch_id,
                   print_sockaddr(*relay).c_str(),
-                  print_sockaddr(target).c_str(),
+                  target_local ? print_sockaddr(*target_local).c_str() : "none",
+				  target_public ? print_sockaddr(*target_public).c_str() : "none",
+				  target_relay ? print_sockaddr(*target_relay).c_str() : "none",
                   print_sockaddr(*executor).c_str());
     if(type==HPRequest)
-        trace_log(">>> punch %s(%d) to %s test target: %s",
+        trace_log(">>> punch %s(%d) to %s test target: %s %s %s",
                   to_str(type).c_str(),
                   punch_id,
                   print_sockaddr(*executor).c_str(),
-                  print_sockaddr(target).c_str());
+				  target_local ? print_sockaddr(*target_local).c_str() : "none",
+				  target_public ? print_sockaddr(*target_public).c_str() : "none",
+				  target_relay ? print_sockaddr(*target_relay).c_str() : "none");
     if(type==HPTest)
-        trace_log(">>> punch %s(%d) to %s",
+        trace_log(">>> punch %s(%d) to %s %s %s",
                   to_str(type).c_str(),
                   punch_id,
-                  print_sockaddr(target).c_str());
+				  target_local ? print_sockaddr(*target_local).c_str() : "none",
+				  target_public ? print_sockaddr(*target_public).c_str() : "none",
+				  target_relay ? print_sockaddr(*target_relay).c_str() : "none");
 
 	sb("d");
 	sb("1:a");
@@ -6579,15 +6632,23 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 		if(type==HPRelay) sb("3:cmd5:relay"); // sub command
 		if(type==HPRequest) sb("3:cmd7:request"); // sub command
         if(type==HPRelay) { // executor ip
-            if(ex_len == 6) sb("3:eip6:")(6, executor_ip);
-            if(ex_len == 18) sb("3:eip18:")(18, executor_ip);
+            if(ex_len == 6) sb("3:eip6:")(6, executor_ip); // ipv4
+            if(ex_len == 18) sb("3:eip18:")(18, executor_ip); // ipv6
         }
 		sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 		sb("8:punch_id4:")(4, (unsigned char*)&punch_id);
-    if(type==HPRelay || type==HPRequest) { // target ip
-        if(tip_len == 6) sb("3:tip6:")(6, target_ip);
-        if(tip_len == 18) sb("3:tip18:")(18, target_ip);
-    }
+		if((type==HPRelay || type==HPRequest) && target_local) { // target local ip
+			if(tlip_len == 6) sb("4:tlip6:")(6, target_local_ip); // ipv4
+			if(tlip_len == 18) sb("4:tlip18:")(18, target_local_ip); // ipv6
+		}
+		if((type==HPRelay || type==HPRequest) && target_public) { // target public ip
+			if(tpip_len == 6) sb("4:tpip6:")(6, target_public_ip); // ipv4
+			if(tpip_len == 18) sb("4:tpip18:")(18, target_public_ip); // ipv6
+		}
+		if((type==HPRelay || type==HPRequest) && target_relay) { // target relay ip
+			if(trip_len == 6) sb("4:trip6:")(6, target_relay_ip); // ipv4
+			if(trip_len == 18) sb("4:trip18:")(18, target_relay_ip); // ipv6
+		}
 	sb("e");
 	sb("1:q5:punch"); // command name
 	put_is_read_only(sb);
@@ -6596,20 +6657,29 @@ void DhtImpl::punch(HolePunch type, int punch_id, SockAddr const& target, SockAd
 	sb("1:y1:qe"); // DHT_QUERY
 	assert(sb.length() >= 0);
 
-	SockAddr destination;
-	if(type==HPTest)
-		destination = target;
-	if(type==HPRelay)
-		destination = *relay;
-	if(type==HPRequest)
-		destination = *executor;
-    
-    destination = ipv4ipv6_resolve(destination);
-    if(destination.get_port() == INVALID_PORT) {
-        error_log("punch fails, unresolved peer addr");
-        return;
-    }
+	std::list<SockAddr> destinations;
 
-	SendTo(destination, buf, (uint)sb.length());
+	if(type==HPTest && target_local)
+		destinations.push_back(*target_local);
+	if(type==HPTest && target_public)
+		destinations.push_back(*target_public);
+	if(type==HPTest && target_relay)
+		destinations.push_back(*target_relay);
+	if(type==HPRelay)
+		destinations.push_back(*relay);
+	if(type==HPRequest)
+		destinations.push_back(*executor);
+
+
+	for(const auto &destination : destinations) {
+
+		SockAddr dest = ipv4ipv6_resolve(destination);
+		if (dest.get_port() == INVALID_PORT) {
+			error_log("punch fails, unresolved peer addr");
+			return;
+		}
+
+		SendTo(dest, buf, (uint) sb.length());
+	}
 }
 

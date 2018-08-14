@@ -161,7 +161,9 @@ public:
 
 	HolePunch punchType;
 	int punchId;
-	Buffer punchTarget_ip;
+	Buffer punchTarget_local_ip;
+	Buffer punchTarget_public_ip;
+	Buffer punchTarget_relay_ip;
 	Buffer punchExecutor_ip;
 
 		// expected current sequence number for compare-and-swap operations
