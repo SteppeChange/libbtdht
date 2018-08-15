@@ -79,7 +79,7 @@ class DHTEvents {
 public:
 	virtual void bootstrap_state_changed(BootState state, sha1_hash new_id, sockaddr_storage const& public_address, sockaddr_storage const& local_address) = 0;
 	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
-	virtual void dht_recv_punch_request_relay(int punch_id, sockaddr_storage const &src_addr) = 0;
+	virtual void dht_recv_punch_request_relay(int punch_id, sockaddr_storage const &src_addr, const byte *target) = 0;
 	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
 	virtual void dht_recv_ping(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
 

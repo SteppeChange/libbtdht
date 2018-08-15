@@ -2285,7 +2285,7 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 		punch_test(message.punchId, punchTargetLocal);
 		punch_test(message.punchId, punchTargetPublic);
 		if (_dht_events)
-			_dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage());
+			_dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage(), message.punchTarget_id);
 	}
 
 	if (message.punchType == HPRelay) {
@@ -2295,7 +2295,7 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
             error_log("punchExecutor.from_compact failed");
             return false;
         }
-		punch_request(message.punchId, punchTargetLocal, punchTargetPublic, punchTargetRelay, punchExecutor);
+		punch_request(message.punchId, punchTargetLocal, punchTargetPublic, punchTargetRelay, punchExecutor, peerID.id);
 	}
 
 	return true;
@@ -6536,7 +6536,7 @@ void DhtLookupNodeList::DumpNodes()
 
 void DhtImpl::punch_test(int punch_id, SockAddr const& target)
 {
-	punch(HPTest, punch_id, &target, 0, 0, 0, 0);
+	punch(HPTest, punch_id, &target, 0, 0, 0, 0, 0);
 }
 
 void DhtImpl::punch_relay(int punch_id,
@@ -6545,22 +6545,24 @@ void DhtImpl::punch_relay(int punch_id,
 						  SockAddr const& target_relay,
 						  SockAddr const& executor, SockAddr const& relay)
 {
-	punch(HPRelay, punch_id, &target_local, &target_public, &target_relay, &executor, &relay);
+	punch(HPRelay, punch_id, &target_local, &target_public, &target_relay, &executor, &relay, 0);
 }
 
 void DhtImpl::punch_request(int punch_id,
 							SockAddr const& target_local,
 							SockAddr const& target_public,
 							SockAddr const& target_relay,
-							SockAddr const& executor)
+							SockAddr const& executor,
+							DhtID const& targetId)
 {
-	punch(HPRequest, punch_id, &target_local, &target_public, &target_relay, &executor, 0);
+	punch(HPRequest, punch_id, &target_local, &target_public, &target_relay, &executor, 0, &targetId);
 }
 
 void DhtImpl::punch(HolePunch type, int punch_id,
 					SockAddr const* target_local, SockAddr const* target_public, SockAddr const* target_relay,
 					SockAddr const* executor,
-					SockAddr const* relay)
+					SockAddr const* relay,
+					DhtID const* targetId)
 {
 	unsigned char buf[240];
 	smart_buffer sb(buf, sizeof(buf));
@@ -6634,6 +6636,11 @@ void DhtImpl::punch(HolePunch type, int punch_id,
         }
 		sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 		sb("8:punch_id4:")(4, (unsigned char*)&punch_id);
+		if(type==HPRequest && targetId) {
+			byte id_bytes[DHT_ID_SIZE];
+			DhtIDToBytes(id_bytes, *targetId);
+			sb("3:tid20:")(DHT_ID_SIZE, id_bytes); // target dht id
+		}
 		if((type==HPRelay || type==HPRequest) && target_local) { // target local ip
 			if(tlip_len == 6) sb("4:tlip6:")(6, target_local_ip); // ipv4
 			if(tlip_len == 18) sb("4:tlip18:")(18, target_local_ip); // ipv6

@@ -1876,12 +1876,14 @@ public:
 					   SockAddr const& target_local,
 					   SockAddr const& target_public,
 					   SockAddr const& target_relay,
-					   SockAddr const& executor);
+					   SockAddr const& executor,
+					   DhtID const& targetId);
 
 	void punch(HolePunch type, int punch_id,
 			   SockAddr const* target_local, SockAddr const* target_public, SockAddr const* target_relay,
 			   SockAddr const* executor,
-			   SockAddr const* relay);
+			   SockAddr const* relay,
+			   DhtID const* targetId);
 
 	void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) override ;
 

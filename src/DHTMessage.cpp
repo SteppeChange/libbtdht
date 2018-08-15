@@ -70,6 +70,7 @@ void DHTMessage::Init()
 	_bDictForUser = NULL;
 	punchType = HPUnknown;
 	punchId = 0;
+	punchTarget_id = 0;
 }
 
 /** This version of DecodeMessageData() can NOT extract a 'v' region
@@ -228,6 +229,8 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		punchIdStr.b = (byte*)args->GetString("punch_id", &punchIdStr.len);
 		assert(punchIdStr.len==sizeof(int));
 		punchId = *(reinterpret_cast<int*>(&(punchIdStr.b[0])));
+		if(punchType==HPRequest)
+			punchTarget_id = (byte*)args->GetString("tid", DHT_ID_SIZE);
 		if(punchType==HPRelay)
 			punchExecutor_ip.b = (byte*)args->GetString("eip", &punchExecutor_ip.len);
 		if(punchType==HPRequest || punchType==HPRelay) {
@@ -310,6 +313,7 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	punchTarget_public_ip = src.punchTarget_public_ip;
 	punchTarget_relay_ip = src.punchTarget_relay_ip;
 	punchExecutor_ip = src.punchExecutor_ip;
+	punchTarget_id = src.punchTarget_id; // is it safe?
 
 	// Warning:  If this was set, it will still point to the dictionary
 	// created by the original _bDict object
