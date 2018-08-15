@@ -81,10 +81,10 @@ public:
 	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
 	virtual void dht_recv_punch_request_relay(int punch_id, sockaddr_storage const &src_addr) = 0;
 	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
+	virtual void dht_recv_ping(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
 
 //	virtual ~DHTEvents() {};
 };
-
 
 // callback types used in the DHT
 typedef void DhtVoteCallback(void *ctx, const byte *target, int const* votes);

@@ -2214,7 +2214,13 @@ bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packe
 	unsigned char buf[512];
 	smart_buffer sb(buf, sizeof(buf));
 
-	debug_log("PING");
+	trace_log("<<< ping (%d) from :%s (id:%s)",
+			  Read32(message.transactionID.b),
+			  print_sockaddr(peerID.addr).c_str(),
+			  format_dht_id(peerID.id).c_str());
+
+	if (_dht_events)
+		_dht_events->dht_recv_ping(peerID.id.sha1(), peerID.addr.get_sockaddr_storage());
 
 	sb("d");
 	AddIP(sb, message.id, peerID.addr);
@@ -2937,15 +2943,6 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 		return;
 	}
 
-	// if we received nodes, let the routing table know about them
-#ifdef _DEBUG_DHT
-	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
-
-	if (_lookup_log)
-		fprintf(_lookup_log, "[%u] [] []: <- %s (rtt:%d ms)\n"
-			, uint(get_milliseconds())
-			, print_sockaddr(peer_id.addr).c_str(), rtt);
-#endif
 
 	Buffer nodes;
 	nodes.b = (byte*)message.replyDict->GetString("nodes", &nodes.len);
