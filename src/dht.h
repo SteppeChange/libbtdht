@@ -263,10 +263,9 @@ public:
 	*/
 	virtual void punch_test(int punch_id, SockAddr const& target) = 0;
 	virtual void punch_relay(int punch_id,
-							 SockAddr const& target_local,
-							 SockAddr const& target_public,
-							 SockAddr const& target_relay,
-							 SockAddr const& executor, SockAddr const& relay) = 0;
+							 SockAddr const& target_local, SockAddr const& target_public, SockAddr const& target_relay,
+							 sha1_hash const& executor_id, SockAddr const& executor,
+							 SockAddr const& relay) = 0;
 	virtual void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;

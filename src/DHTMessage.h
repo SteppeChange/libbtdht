@@ -165,6 +165,7 @@ public:
 	Buffer punchTarget_public_ip;
 	Buffer punchTarget_relay_ip;
 	Buffer punchExecutor_ip;
+	byte*  punchExecutor_id;
 	byte*  punchTarget_id;
 
 	// ping

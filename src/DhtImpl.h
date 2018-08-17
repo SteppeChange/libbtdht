@@ -1867,23 +1867,22 @@ public:
 	virtual void punch_test(int punch_id, SockAddr const& target) override;
 	// this command to sends  punch_request from relay to executor_id
 	virtual void punch_relay(int punch_id,
-							 SockAddr const& target_local,
-							 SockAddr const& target_public,
-							 SockAddr const& target_relay,
-							 SockAddr const& executor, SockAddr const& relay) override;
+							 SockAddr const& target_local, SockAddr const& target_public, SockAddr const& target_relay,
+							 sha1_hash const& executor_id, SockAddr const& executor,
+							 SockAddr const& relay) override;
+
 	// this command to sends  punch_test from executor_id to target
 	void punch_request(int punch_id,
+			           DhtID const& targetId,
 					   SockAddr const& target_local,
 					   SockAddr const& target_public,
 					   SockAddr const& target_relay,
-					   SockAddr const& executor,
-					   DhtID const& targetId);
+					   DhtID const& executorId, SockAddr const& executor);
 
 	void punch(HolePunch type, int punch_id,
-			   SockAddr const* target_local, SockAddr const* target_public, SockAddr const* target_relay,
-			   SockAddr const* executor,
-			   SockAddr const* relay,
-			   DhtID const* targetId);
+			   DhtID const* targetId, SockAddr const* target_local, SockAddr const* target_public, SockAddr const* target_relay,
+			   DhtID const* executorId, SockAddr const* executor,
+			   SockAddr const* relay);
 
 	void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) override ;
 
