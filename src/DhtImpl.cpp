@@ -4087,11 +4087,11 @@ void DhtProcessBase::CompleteThisProcess()
 {
 
 	debug_log("[%u] COMPLETED total=%d", process_id(), processManager.size());
-	for (int i = 0; i < processManager.size(); ++i) {
+/*	for (int i = 0; i < processManager.size(); ++i) {
 		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
-	}
+	} */
 
 	// let the process manager know that this phase of the dht process is complete
 	// and to start the next phase of the process (or terminate if all phases are
@@ -4243,9 +4243,10 @@ void DhtLookupScheduler::Schedule()
 		if (i == nodeIndex) {
 			verbose_log(" ---- DhtProcess end ----");
 		}
-		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+/*		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
+			*/
 	}
 
 	// No outstanding requests. Means we're finished.
@@ -4663,9 +4664,10 @@ void DhtBroadcastScheduler::Schedule()
 		if (i == index) {
 			verbose_log("  ---- DhtProcess end ----");
 		}
-		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
+/*		verbose_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
+			*/
 	}
 
 	// No outstanding requests. Means we're finished.
@@ -4830,20 +4832,20 @@ void GetPeersDhtProcess::CompleteThisProcess()
 	debug_log("GetPeersDhtProcess completed id:%d time:%d\n", target.id[0], get_microseconds());
 
 	debug_log("[%u] PRE-COMPACT total=%d", process_id() , processManager.size());
-	for (int i = 0; i < processManager.size(); ++i) {
+/*	for (int i = 0; i < processManager.size(); ++i) {
 		debug_log("[%u] [%d] queried=%s\t filtered=%d version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
-	}
+	} */
 
 	processManager.CompactList();
 
 	debug_log("[%u] COMPACT total=%d", process_id(), processManager.size());
-	for (int i = 0; i < processManager.size(); ++i) {
+/*	for (int i = 0; i < processManager.size(); ++i) {
 		debug_log("[%u] [%d] queried=%s\t filtered=%d\t version=%s", process_id(), i
 			, _queried_str[processManager[i].queried], Filter(processManager[i])
 			, print_version(processManager[i].client, processManager[i].version).c_str());
-	}
+	}*/
 
 	if(callbackPointers.getPeersCallback)
 		callbackPointers.getPeersCallback(callbackPointers.callbackContext, target.sha1().value, std::list<sha1_hash>(), true);

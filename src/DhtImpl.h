@@ -910,7 +910,7 @@ public:
 #define FAIL_THRES 10
 
 //#define CROSBY_E (2*60) // age in second a peer must be before we include them in find nodes
-#define CROSBY_E (15)
+#define CROSBY_E (1)
 // 15 sec
 // reason, to prevent we send new node to everyone but still noy verified it
 
