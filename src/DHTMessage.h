@@ -167,6 +167,9 @@ public:
 	Buffer punchExecutor_ip;
 	byte*  punchTarget_id;
 
+	// ping
+	byte*  to_id;
+
 
 	// expected current sequence number for compare-and-swap operations
 	// if the blob we're about to overwrite has a different sequence number than

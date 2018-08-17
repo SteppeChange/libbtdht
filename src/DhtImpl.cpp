@@ -931,7 +931,10 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 	trace_log(">>> ping(%d): %s", req->tid
 		, print_sockaddr(peer_id.addr).c_str());
 
-	sb("d1:ad2:id20:")(DHT_ID_SIZE, _my_id_bytes)("e1:q4:ping");
+	sb("d1:ad");
+	sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
+	sb("2:to20:")(peer_id.id);
+	sb("e1:q4:ping");
 	put_is_read_only(sb);
 	put_transaction_id(sb, Buffer((byte*)&req->tid, 4));
 	put_version(sb);
@@ -2219,8 +2222,16 @@ bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packe
 			  print_sockaddr(peerID.addr).c_str(),
 			  format_dht_id(peerID.id).c_str());
 
-	if (_dht_events)
-		_dht_events->dht_recv_ping(peerID.id.sha1(), peerID.addr.get_sockaddr_storage());
+	DhtID to_dht;
+	CopyBytesToDhtID(to_dht, message.to_id);
+
+	if(_my_id == to_dht) {
+		if (_dht_events)
+			_dht_events->dht_recv_ping(peerID.id.sha1(), peerID.addr.get_sockaddr_storage());
+	} else
+		warnings_log("wrong incoming ping to %s (my:%s)",
+											 format_dht_id(to_dht).c_str(),
+											 format_dht_id(_my_id).c_str());
 
 	sb("d");
 	AddIP(sb, message.id, peerID.addr);

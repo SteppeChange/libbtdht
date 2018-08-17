@@ -71,6 +71,7 @@ void DHTMessage::Init()
 	punchType = HPUnknown;
 	punchId = 0;
 	punchTarget_id = 0;
+	to_id = 0;
 }
 
 /** This version of DecodeMessageData() can NOT extract a 'v' region
@@ -241,6 +242,7 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 	}
 	else if (strcmp(command,"ping") == 0) {
 		dhtCommand = DHT_QUERY_PING;
+		to_id = (byte*)args->GetString("to", DHT_ID_SIZE);
 	}
 	else {
 		// unknown messages with either a 'target'
@@ -314,6 +316,7 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	punchTarget_relay_ip = src.punchTarget_relay_ip;
 	punchExecutor_ip = src.punchExecutor_ip;
 	punchTarget_id = src.punchTarget_id; // is it safe?
+	to_id = src.to_id;
 
 	// Warning:  If this was set, it will still point to the dictionary
 	// created by the original _bDict object
