@@ -1864,7 +1864,7 @@ public:
 				  find_node_success const& success_fun,
 				  std::function<void(std::string const& error_reason)> const& failed_fun)  override;
 
-	virtual void punch_test(int punch_id, SockAddr const& target) override;
+	virtual void punch_test(int punch_id, sha1_hash const& target_id, SockAddr const& target) override;
 	// this command to sends  punch_request from relay to executor_id
 	virtual void punch_relay(int punch_id,
 							 SockAddr const& target_local, SockAddr const& target_public, SockAddr const& target_relay,

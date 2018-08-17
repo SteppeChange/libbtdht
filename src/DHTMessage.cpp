@@ -231,7 +231,7 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		punchIdStr.b = (byte*)args->GetString("punch_id", &punchIdStr.len);
 		assert(punchIdStr.len==sizeof(int));
 		punchId = *(reinterpret_cast<int*>(&(punchIdStr.b[0])));
-		if(punchType==HPRequest) {
+		if(punchType==HPRequest || punchType==HPTest) {
 			punchTarget_id = (byte *) args->GetString("tid", DHT_ID_SIZE);
 		}
 		if(punchType==HPRelay) {
