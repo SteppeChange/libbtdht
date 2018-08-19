@@ -2303,24 +2303,28 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	}
 
 	if (message.punchType == HPRequest) {
-
 		DhtID to_dht;
 		if(message.punchExecutor_id)
 			CopyBytesToDhtID(to_dht, message.punchExecutor_id);
 		else
-			error_log("incompatible punch request");
+			error_log("incompatible punch request (bad exec)");
 
-		sha1_hash target_dht(message.punchTarget_id);
+        if(message.punchTarget_id)
+        {
+            sha1_hash target_dht(message.punchTarget_id);
+            if(message.punchExecutor_id == 0 || _my_id == to_dht) {
+                punch_test(message.punchId, target_dht, punchTargetLocal);
+                punch_test(message.punchId, target_dht, punchTargetPublic);
+                if (_dht_events)
+                    _dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage(), message.punchTarget_id);
+            } else
+                warnings_log("wrong incoming punch request to %s (my:%s)",
+                             format_dht_id(to_dht).c_str(),
+                             format_dht_id(_my_id).c_str());
+        }
+        else
+            error_log("incompatible punch request (bad target)");
 
-		if(message.punchExecutor_id == 0 || _my_id == to_dht) {
-			punch_test(message.punchId, target_dht, punchTargetLocal);
-			punch_test(message.punchId, target_dht, punchTargetPublic);
-			if (_dht_events)
-				_dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage(), message.punchTarget_id);
-		} else
-			warnings_log("wrong incoming punch request to %s (my:%s)",
-						 format_dht_id(to_dht).c_str(),
-						 format_dht_id(_my_id).c_str());
 	}
 
 	if (message.punchType == HPRelay) {
