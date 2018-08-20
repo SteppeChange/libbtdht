@@ -1738,6 +1738,11 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 
 	// validate the token
 	if (!ValidateWriteToken(peerID, message.token.b)) {
+		warnings_log("announce rejected, invalid write token id='%s', info_hash='%s', token='%s', host='%A'",
+				  format_dht_id(peerID.id).c_str(),
+				  format_dht_id(info_hash_id).c_str(),
+				  hexify(message.token.b).c_str(),
+				  &peerID.addr);
 		Account(DHT_INVALID_PQ_INVALID_TOKEN, packetSize);
 		return false;
 	}
@@ -1822,8 +1827,10 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	BuildFindNodesPacket(sb, info_hash_id, mtu - size, peerID.addr);
 	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
 
-	debug_log("<<< get_peers: id='%s', info_hash='%s', token='%s'",
-			 format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(), hexify(ttoken.value).c_str());
+	debug_log("<<< get_peers: id='%s', info_hash='%s', token='%s' ip: %s",
+			 format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(),
+			 hexify(ttoken.value).c_str(),
+			 print_sockaddr(peerID.addr).c_str());
 
 	if (has_values) {
 		int left = mtu - (sb.length() + 10);
