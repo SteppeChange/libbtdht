@@ -1861,10 +1861,11 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 	}
 	CopyBytesToDhtID(target_id, message.target.b);
 
-	trace_log("<<< find_node (%d), from :%s %s",
+	trace_log("<<< find_node (%d), from :%s %s, version: %c%c %hu.%hu",
 			  Read32(message.transactionID.b),
 			  print_sockaddr(peerID.addr).c_str(),
-			  format_dht_id(peerID.id).c_str());
+			  format_dht_id(peerID.id).c_str(),
+			  message.version.b[0], message.version.b[1], (unsigned short)(message.version.b[2]), (unsigned short)(message.version.b[3]));
 
 	unsigned char buf[512];
 	smart_buffer sb(buf, sizeof(buf));
@@ -3599,14 +3600,6 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 
 	Account(DHT_BW_IN_TOTAL, len);
 
-	// TODO: v6
-/*	if (addr.isv6()) {
-#if defined(_DEBUG_DHT)
-        debug_log("IPv6 from is not supported");
- #endif
-		Account(DHT_INVALID_IPV6, len);
-		return true;
-	} */
 
 	if (ParseKnownPackets(addr, buffer, len)) {
 		Account(DHT_BW_IN_KNOWN, len);
@@ -3618,33 +3611,6 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 		Account(DHT_INVALID_PI_NO_DICT, len);
 		return false;
 	}
-
-#if defined(_DEBUG_DHT_INSTRUMENT)
-	if (message.type && message.transactionID.b && message.transactionID.len >= sizeof(uint32)) {
-		instrument_log('<', message.command, message.type[0], len, Read32(message.transactionID.b));
-	}
-#endif
-
-/*	if (message.version.len == 4) {
-		debug_log(" [%d.%d.%d.%d:%u] client version: %c%c %u"
-			, addr._sin6[12]
-			, addr._sin6[13]
-			, addr._sin6[14]
-			, addr._sin6[15]
-			, addr.get_port()
-			, message.version.b[0]
-			, message.version.b[1]
-			, (int(message.version.b[2]) << 8) | message.version.b[3]
-			);
-	} else {
-		debug_log(" [%d.%d.%d.%d:%u] client version: unknown"
-			, addr._sin6[12]
-			, addr._sin6[13]
-			, addr._sin6[14]
-			, addr._sin6[15]
-			, addr.get_port()
-			);
-	} */
 
 	if (_dht_enabled)
 		return InterpretMessage(message, addr, len);
