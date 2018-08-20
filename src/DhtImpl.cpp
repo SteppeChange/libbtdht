@@ -2304,7 +2304,7 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 
 	if (message.punchType == HPRequest) {
 		DhtID to_dht;
-		if(message.punchExecutor_id)
+		if(message.punchExecutor_id && message.punchExecutor_id[0]!=0 )
 			CopyBytesToDhtID(to_dht, message.punchExecutor_id);
 		else
 			error_log("incompatible punch request (bad exec)");
@@ -2312,7 +2312,7 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
         if(message.punchTarget_id)
         {
             sha1_hash target_dht(message.punchTarget_id);
-            if(message.punchExecutor_id == 0 || _my_id == to_dht) {
+            if(to_dht.is_empty() || _my_id == to_dht) {
                 punch_test(message.punchId, target_dht, punchTargetLocal);
                 punch_test(message.punchId, target_dht, punchTargetPublic);
                 if (_dht_events)
@@ -2329,7 +2329,9 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 
 	if (message.punchType == HPRelay) {
 		SockAddr punchExecutor;
-		DhtID punchExecutorId(message.punchExecutor_id);
+		DhtID punchExecutorId;
+		if(message.punchExecutor_id!=0)
+			punchExecutorId = DhtID(message.punchExecutor_id);
 
 		bool ok = punchExecutor.from_compact(message.punchExecutor_ip.b, message.punchExecutor_ip.len);
         if (!ok)

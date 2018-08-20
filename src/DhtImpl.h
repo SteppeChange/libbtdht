@@ -61,6 +61,11 @@ public:
 		CopyBytesToDhtID(*this, hash.value);
 	}
 
+	bool is_empty() const
+	{
+		return id[0] == 0 && id[1] == 0 && id[2] == 0 && id[3] == 0 && id[4] == 0;
+	}
+
 	uint32 id[DHT_ID_WORDCOUNT];
 
 	unsigned int GetBit(unsigned int index);
