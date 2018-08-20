@@ -5507,6 +5507,8 @@ void DhtImpl::FindNode(	sha1_hash const& target,
 
 	DhtBucket &bucket = *_buckets[bucket_id];
 	DhtPeer* existingNode = bucket.FindNode(target);
+
+#ifndef USE_RELAY
 	if (existingNode && existingNode->rtt!=INT_MAX) {
 		// there is target node in the local t-bucket
 		// existingNode->rtt!=INT_MAX means that node is verified
@@ -5515,7 +5517,9 @@ void DhtImpl::FindNode(	sha1_hash const& target,
         empty_sha1.clear();
 		success_fun(existingNode->id.addr.get_sockaddr_storage(), empty_sha1, sockaddr_storage(), existingNode->rtt);
 	}
-	else { // there is NO the target node in the local t-bucket
+	else
+#endif //
+	{ // there is NO the target node in the local t-bucket
 		DhtID t_id(target);
 		DoFindNodes(t_id, success_fun, failed_fun);
 	}
