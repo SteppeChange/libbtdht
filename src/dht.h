@@ -63,7 +63,7 @@ enum BootState {
 	EBootFailed = 2,
 };
 
-inline std::string to_string(BootState const& st)
+inline const char* boot_to_string(BootState st)
 {
 	switch(st)
 	{

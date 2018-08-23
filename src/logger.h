@@ -37,7 +37,7 @@ static void warnings_log(char const* fmt, Args ... args)
 	dht_log(DHTLogLevel::EDhtWarnings, fmt, args ...);
 }
 
-template<typename ... Args>
+template<typename ... Args> // info
 static void trace_log(char const* fmt, Args ... args)
 {
 	dht_log(DHTLogLevel::EDhtTrace, fmt, args ...);
