@@ -2231,9 +2231,10 @@ bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packe
 			  format_dht_id(peerID.id).c_str());
 
 	DhtID to_dht;
-	CopyBytesToDhtID(to_dht, message.to_id);
+    if(message.to_id)
+        CopyBytesToDhtID(to_dht, message.to_id);
 
-	if(_my_id == to_dht) {
+	if(_my_id == to_dht && message.to_id) {
 		if (_dht_events)
 			_dht_events->dht_recv_ping(peerID.id.sha1(), peerID.addr.get_sockaddr_storage());
 	} else
