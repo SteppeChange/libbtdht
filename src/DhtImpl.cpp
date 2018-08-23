@@ -2272,9 +2272,10 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 	if (_dht_events && message.punchType == HPTest) {
 
 		DhtID to_dht;
-		CopyBytesToDhtID(to_dht, message.punchTarget_id);
+        if(message.punchTarget_id)
+            CopyBytesToDhtID(to_dht, message.punchTarget_id);
 
-		if(_my_id == to_dht) {
+		if(_my_id == to_dht && message.punchTarget_id) {
 			if (_dht_events)
 				_dht_events->dht_recv_punch_test(message.punchId, peerID.addr.get_sockaddr_storage());
 		} else
