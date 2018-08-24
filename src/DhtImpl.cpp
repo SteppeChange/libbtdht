@@ -2454,8 +2454,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
-        warnings_log("Warning: Response IP != Request IP %s %s",
-                  print_sockaddr(req->peer.addr).c_str(), print_sockaddr(peerID.addr).c_str());
+        warnings_log("Warning: Response IP != Request IP / %s != %s",
+					 print_sockaddr(peerID.addr).c_str(), print_sockaddr(req->peer.addr).c_str());
 	}
 
 	Account(DHT_BW_IN_REPL, pkt_size);
