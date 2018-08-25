@@ -3447,6 +3447,8 @@ void DhtImpl::Restart() {
 *
 **/
 
+	warnings_log("Start DHT 1.3");
+
 	GenerateId();
 
 	if(_dht_events)
