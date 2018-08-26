@@ -6,8 +6,7 @@
 #include <memory>
 
 
-typedef void DhtLogCallback(int level, char const* str);
-extern DhtLogCallback* g_logger;
+extern DhtLogCallbacks g_logger;
 
 // http://fuckingclangwarnings.com
 #pragma clang diagnostic push
@@ -15,13 +14,17 @@ extern DhtLogCallback* g_logger;
 template<typename ... Args>
 static void dht_log(DHTLogLevel level, char const* fmt, Args ... args)
 {
-	size_t size = snprintf(nullptr, 0, fmt, args ...) + 1;
+	if(g_logger.level && (*g_logger.level)() < level)
+		return;
+
+size_t size = snprintf(nullptr, 0, fmt, args ...) + 1;
 	std::unique_ptr<char[]> buf(new char[size]);
 
 	snprintf(buf.get(), size, fmt, args ...);
 	std::string formatted(buf.get(), buf.get() + size - 1);
 
-	(*g_logger)(static_cast<int>(level), formatted.c_str());
+	if(g_logger.write)
+		(*g_logger.write)(static_cast<int>(level), formatted.c_str());
 }
 #pragma clang diagnostic pop
 
@@ -35,6 +38,12 @@ template<typename ... Args>
 static void warnings_log(char const* fmt, Args ... args)
 {
 	dht_log(DHTLogLevel::EDhtWarnings, fmt, args ...);
+}
+
+template<typename ... Args>
+static void info_log(char const* fmt, Args ... args)
+{
+	dht_log(DHTLogLevel::EDhtInfo, fmt, args ...);
 }
 
 template<typename ... Args> // info

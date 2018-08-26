@@ -64,14 +64,14 @@ int clamp(int v, int min, int max)
 	return v;
 }
 
-void log_to_stderr(int level, char const* str)
+/*void log_to_stderr(int level, char const* str)
 {
 	fprintf(stderr, "DHT: [%d] %s\n", level, str);
-}
+}*/
 
-DhtLogCallback* g_logger = &log_to_stderr;
+DhtLogCallbacks g_logger;
 
-void set_log_callback(DhtLogCallback* log)
+void set_log_callback(DhtLogCallbacks log)
 {
 	g_logger = log;
 }
@@ -229,10 +229,10 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_ping_batching = 1;
 	_enable_quarantine = true;
 
-	_dht_utversion[0] = 'V';
-	_dht_utversion[1] = 'N';
-	_dht_utversion[2] = 61;
-	_dht_utversion[3] = 61;
+	_dht_utversion[0] = 'p';
+	_dht_utversion[1] = 'r';
+	_dht_utversion[2] = 0x1;
+	_dht_utversion[3] = 0x4;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -272,6 +272,8 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 
 DhtImpl::~DhtImpl()
 {
+	info_log("Kademlia library release");
+
 #ifdef _DEBUG_DHT
 	if (_lookup_log)
 		fclose(_lookup_log);
@@ -3447,7 +3449,7 @@ void DhtImpl::Restart() {
 *
 **/
 
-	warnings_log("Start DHT 1.3");
+	info_log("ReStart Kademlia library %c%c %d.%d", _dht_utversion[0], _dht_utversion[1], _dht_utversion[2], _dht_utversion[3] );
 
 	GenerateId();
 

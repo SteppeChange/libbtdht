@@ -38,8 +38,9 @@ class BencEntity;
 
 
 enum DHTLogLevel {
-    EDhtError,
+    EDhtError = 0,
 	EDhtWarnings,
+	EDhtInfo,
     EDhtTrace,
     EDhtDebug,
     EDhtVerbose
@@ -97,7 +98,18 @@ typedef int DhtPutCallback(void * ctx, std::vector<char>& buffer, int64& seq, So
 typedef int DhtPutDataCallback(void * ctx, std::vector<char> const& buffer, int64 seq, SockAddr src);
 typedef void DhtPutCompletedCallback(void * ctx);
 typedef void DhtGetCallback(void* ctx, std::vector<char> const& buffer);
-typedef void DhtLogCallback(int level, char const* str);
+
+
+typedef void DhtLogWriteCallback(int level, char const* str);
+typedef int DhtLogLevelCallback();
+struct DhtLogCallbacks {
+	DhtLogCallbacks()
+			: write(0)
+			, level(0)
+	{}
+	DhtLogWriteCallback* write;
+	DhtLogLevelCallback* level;
+};
 
 // asks the client to save the DHT state
 typedef void DhtSaveCallback(void* user_data, const byte* buf, int len);
@@ -341,7 +353,7 @@ public:
 smart_ptr<IDht> create_dht(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
 	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip = NULL, DHTEvents* dht_events = NULL);
 
-void set_log_callback(DhtLogCallback* log);
+void set_log_callback(DhtLogCallbacks log);
 
 #endif //__DHT_H__
 
