@@ -912,10 +912,10 @@ public:
 //--------------------------------------------------------------------------------
 
 #define FAIL_THRES_NOCONTACT 2 // no contact?, lower thres...
-#define FAIL_THRES 10
+#define FAIL_THRES 5
 
 //#define CROSBY_E (2*60) // age in second a peer must be before we include them in find nodes
-#define CROSBY_E (1)
+#define CROSBY_E (2)
 // 15 sec
 // reason, to prevent we send new node to everyone but still noy verified it
 

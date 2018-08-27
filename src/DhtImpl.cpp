@@ -875,10 +875,7 @@ void DhtImpl::SplitBucket(uint bucket_id)
 		p->ComputeSubPrefix(span, KADEMLIA_BUCKET_SIZE_POWER); // reset the sub-prefix info for routing table performance optimization for the new span
 		if (p->id.id.id[slot] & mask) {
 			old_bucket.replacement_peers.unlinknext(peer);
-#if g_log_dht
-			assert(p->origin >= 0);
-			assert(p->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
+
 			new_bucket.replacement_peers.enqueue(p);
 		} else {
 			peer=&(*peer)->next;
@@ -1060,13 +1057,13 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			//   3. we force removing it, typically because we received an ICMP
 			//      error indicating the node is down.
 
-#if g_log_dht
-			assert((*peer)->origin >= 0);
-			assert((*peer)->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-			g_dht_peertype_count[(*peer)->origin]--;
-#endif
 			// remove the node from its bucket and move one node from the
 			// replacement cache
+
+			debug_log("node %s %s was removed form bucket"
+					, print_sockaddr(p->id.addr).c_str()
+					, format_dht_id(p->id.id).c_str());
+
 			bucket.peers.unlinknext(peer);
 			if (!bucket.replacement_peers.empty()) {
 				// move one from the replacement_peers instead.
@@ -1093,11 +1090,7 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 
 		if (++p->num_fail >= (p->rtt != INT_MAX ? FAIL_THRES : FAIL_THRES_NOCONTACT)
 			|| force_remove) {
-#if g_log_dht
-			assert((*peer)->origin >= 0);
-			assert((*peer)->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-			g_dht_peertype_count[(*peer)->origin]--;
-#endif
+
 			bucket.replacement_peers.unlinknext(peer);
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
