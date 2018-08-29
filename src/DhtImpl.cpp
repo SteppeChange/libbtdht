@@ -272,7 +272,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 
 DhtImpl::~DhtImpl()
 {
-	info_log("Kademlia library release");
+	info_log("Kademlia library releasing");
 
 #ifdef _DEBUG_DHT
 	if (_lookup_log)

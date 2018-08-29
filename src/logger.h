@@ -17,7 +17,7 @@ static void dht_log(DHTLogLevel level, char const* fmt, Args ... args)
 	if(g_logger.level && (*g_logger.level)() < level)
 		return;
 
-size_t size = snprintf(nullptr, 0, fmt, args ...) + 1;
+	size_t size = snprintf(nullptr, 0, fmt, args ...) + 1;
 	std::unique_ptr<char[]> buf(new char[size]);
 
 	snprintf(buf.get(), size, fmt, args ...);
