@@ -336,7 +336,6 @@ public:
 	virtual bool CanAddNode() = 0;
 	virtual int GetNumPeers() = 0;
 	virtual bool IsBusy() = 0;
-	virtual int GetBootstrapState() = 0;
 	virtual int GetRate() = 0;
 	virtual int GetQuota() = 0;
 	virtual int GetProbeRate() = 0;

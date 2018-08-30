@@ -52,6 +52,9 @@ void CopyDhtIDToBytes(DhtID const &id, byte *b);
 //
 //--------------------------------------------------------------------------------
 
+
+const int WRONG_RTT = INT_MAX;
+
 class DhtID
 {
 public:
@@ -693,7 +696,7 @@ public:
 	// node we update our understanding of its RTT.
 	// this is used to prioritize nodes with low RTT,
 	// to speed up lookups
-	// if this is INT_MAX, it means we don't know its RTT yet
+	// if this is WRONG_RTT, it means we don't know its RTT yet
 	int rtt;
 
 	// the time we've first seen this node. This can be
@@ -718,7 +721,7 @@ public:
 		, subPrefixPositionBit(0)
 		, num_fail(0)
 		, lastContactTime(0)
-		, rtt(INT_MAX)
+		, rtt(WRONG_RTT)
 		, first_seen(0)
 		, next(NULL)
 		, origin(0)
@@ -1912,7 +1915,6 @@ public:
 	bool CanAddNode() override;
 	int GetNumPeers() override;
 	bool IsBusy() override;
-	int GetBootstrapState() override;
 	int GetRate() override;
 	int GetQuota() override;
 	int GetProbeRate() override;
@@ -2024,6 +2026,7 @@ public:
 	bool _closing; // app is closing, don't initiate bootstrap
 
 	int _dht_peers_count;
+	int _dht_request_response;
 	int _refresh_buckets_counter;	// Number of seconds since the last bucket was operated upon
 	int _dht_quota;
 	int _dht_rate;
@@ -2153,7 +2156,7 @@ public:
 	void SendPunch(SockAddr const& dst, SockAddr const& punchee);
 
 	// Update the internal DHT tables with an id.
-	DhtPeer *Update(const DhtPeerID &id, uint origin, bool seen = false, int rtt = INT_MAX);
+	DhtPeer *Update(const DhtPeerID &id, uint origin, bool seen = false, int rtt = WRONG_RTT);
 
 	// Increase the error counter for a peer
 	void UpdateError(const DhtPeerID &id, uint transaction, bool force_remove = false);

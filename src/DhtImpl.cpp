@@ -52,7 +52,7 @@ const int CAS_MISMATCH = 301;
 const int LOWER_SEQ = 302;
 
 
-const int BOOT_COMPLETE = 2; // TO DO must be 8
+const int BOOT_COMPLETE = 4; // TO DO must be 8
 
 bool DhtVerifyHardenedID(const SockAddr& addr, byte const* node_id);
 void DhtCalculateHardenedID(const SockAddr& addr, byte *node_id);
@@ -217,6 +217,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_allow_new_job = false;
 	_refresh_buckets_counter = -1;
 	_dht_peers_count = 0;
+	_dht_request_response = 0;
 
 	// we just happen to know the DHT network is larger than this. If our routing
 	// table isn't deep enough, just keep bootstrapping.
@@ -502,14 +503,6 @@ int DhtImpl::GetNumPeers()
 bool DhtImpl::IsBusy()
 {
 	return _dht_busy;
-}
-
-/**
- *
- */
-int DhtImpl::GetBootstrapState()
-{
-	return _dht_bootstrap;
 }
 
 /**
@@ -1044,8 +1037,8 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
                   , format_dht_id(p->id.id).c_str()
                   , transaction);
 
-		// rtt is set to INT_MAX until we receive the first response from this node
-		if (++p->num_fail >= (p->rtt != INT_MAX ? FAIL_THRES : FAIL_THRES_NOCONTACT)
+		// rtt is set to WRONG_RTT until we receive the first response from this node
+		if (++p->num_fail >= (p->rtt != WRONG_RTT ? FAIL_THRES : FAIL_THRES_NOCONTACT)
 			|| !bucket.replacement_peers.empty()
 			|| force_remove) {
 
@@ -1088,7 +1081,7 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 		// Check if the peer is already in the bucket
 		if (id != p->id) continue;
 
-		if (++p->num_fail >= (p->rtt != INT_MAX ? FAIL_THRES : FAIL_THRES_NOCONTACT)
+		if (++p->num_fail >= (p->rtt != WRONG_RTT ? FAIL_THRES : FAIL_THRES_NOCONTACT)
 			|| force_remove) {
 
 			bucket.replacement_peers.unlinknext(peer);
@@ -2500,6 +2493,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	}
 
 	// Call the completion callback
+	_dht_request_response++;
 	req->_pListener->Callback(req->peer, req, message, (DhtProcessFlags)NORMAL_RESPONSE);
 
 	delete req->_pListener;
@@ -2888,7 +2882,8 @@ void DhtImpl::ProcessCallback()
 	// That was due to the timeout error happened in the first DHT nodes lookup, which means we only
 	// connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
 	// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
-	if (_dht_peers_count >= BOOT_COMPLETE) {
+	if (_dht_peers_count >= BOOT_COMPLETE
+	&& _dht_request_response >= 2) {
 		_dht_bootstrap = bootstrap_complete;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
 
@@ -3488,6 +3483,7 @@ void DhtImpl::Restart() {
 	_buckets.clear();
 	_refresh_buckets_counter = 0;
 	_dht_peers_count = 0;
+	_dht_request_response = 0;
 
 	if (_dht_bootstrap == valid_response_received) {
 		debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
@@ -3518,7 +3514,7 @@ void DhtImpl::Restart() {
 #else
 			, 0
 #endif
-			, p->rtt != INT_MAX, p->rtt);
+			, p->rtt != WRONG_RTT, p->rtt);
 
 		_dht_peer_allocator.Free(p);
 	}
@@ -3630,6 +3626,13 @@ bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 
 void DhtImpl::SaveState(void* user_data)
 {
+    
+    if(_dht_bootstrap != bootstrap_complete)
+        warnings_log("DhtImpl::SaveState failed, node is not ready");
+    
+    if(!_save_callback)
+        error_log("DhtImpl::SaveState failed, _save_callback is empty");
+    
 	BencodedDict base;
 	BencodedDict *dict = &base;
 
@@ -3644,7 +3647,7 @@ void DhtImpl::SaveState(void* user_data)
 
 		SockAddr addr;
 		_ip_counter->GetIPv4(addr);
-		size_t iplen = addr.compact(buf, false);
+		size_t iplen = addr.compact(buf, true);
 		BencEntityMem beMemIP(buf, iplen);
 		dict->Insert("ip", beMemIP);
 	}
@@ -3655,7 +3658,7 @@ void DhtImpl::SaveState(void* user_data)
 		DhtBucket &bucket = *_buckets[i];
 		if (bucket.span < _lowest_span) _lowest_span = bucket.span;
 		for (DhtPeer *peer = bucket.peers.first(); peer; peer=peer->next) {
-			if (peer->num_fail == 0 && peer->id.addr.isv4()) {
+			if (peer->num_fail == 0 && peer->id.addr.isv4() && peer->rtt != WRONG_RTT) {
 				PackedDhtPeer tmp;
 				DhtIDToBytes(tmp.id, peer->id.id);
 				peer->id.addr.compact(tmp.ip, true);
@@ -3680,6 +3683,7 @@ void DhtImpl::SaveState(void* user_data)
 	dict->InsertInt("table_depth", (int)160 - lowest_span);
 
 	std::string b = base.Serialize();
+    
 	_save_callback(user_data, (const byte*)b.c_str(), b.size());
 }
 
@@ -3716,7 +3720,7 @@ void DhtImpl::LoadState(void* user_data)
 				
 				SockAddr tmp;
 				_ip_counter->GetIPv4(tmp);
-				debug_log("Loaded possible external IP \"%s\""
+				info_log("Loaded possible external IP \"%s\""
 					, print_sockaddr(addr).c_str());
 			}
 		}
@@ -3740,7 +3744,7 @@ void DhtImpl::LoadState(void* user_data)
 		}
 	}
 
-	debug_log("Loaded %d nodes and ID \"%s\" from disk"
+	info_log("Loaded %d nodes and ID \"%s\" from disk"
 		, num_loaded, hexify(_my_id_bytes).c_str());
 }
 
@@ -3821,7 +3825,7 @@ bool DhtImpl::IsBootstrap(const SockAddr& addr)
 DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 {
 	// if seen == true, a true RTT must be provided
-	assert(rtt != INT_MAX || seen == false);
+	assert(rtt != WRONG_RTT || seen == false);
 
 #if g_log_dht
 	assert(origin >= 0);
@@ -5508,9 +5512,9 @@ void DhtImpl::FindNode(	sha1_hash const& target,
 	DhtPeer* existingNode = bucket.FindNode(target);
 
 #ifndef USE_RELAY
-	if (existingNode && existingNode->rtt!=INT_MAX) {
+	if (existingNode && existingNode->rtt!=WRONG_RTT) {
 		// there is target node in the local t-bucket
-		// existingNode->rtt!=INT_MAX means that node is verified
+		// existingNode->rtt!=WRONG_RTT means that node is verified
 		// TO DO ? if (now - peer->first_seen < min_age)
         sha1_hash empty_sha1;
         empty_sha1.clear();
@@ -6234,18 +6238,18 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		if (p->first_seen == 0)
 			p->first_seen = candidateNode.first_seen;
 
-		if (p->rtt == INT_MAX)
+		if (p->rtt == WRONG_RTT)
 			p->rtt = candidateNode.rtt;
-		else if (candidateNode.rtt != INT_MAX) {
+		else if (candidateNode.rtt != WRONG_RTT) {
 			// sliding average. blend in the new RTT by one quarter
 				p->rtt = (p->rtt * 3 + candidateNode.rtt) / 4;
 		}
         
         // NODE address update
-        // p->rtt == INT_MAX means, that we have no response from this node
+        // p->rtt == WRONG_RTT means, that we have no response from this node
         // so we need to update addr, maybe new addr allows to connect
         // we can improve this rule - accept only response
-        if(p->rtt == INT_MAX)
+        if(p->rtt == WRONG_RTT)
         {
             if(p->id.addr != candidateNode.id.addr)
             {
@@ -6289,7 +6293,9 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 
 		if (pout) *pout = peer;
 
-		if (pDhtImpl->_dht_bootstrap == DhtImpl::not_bootstrapped && pDhtImpl->_dht_peers_count >= BOOT_COMPLETE) {
+		if (pDhtImpl->_dht_bootstrap == DhtImpl::not_bootstrapped
+			&& pDhtImpl->_dht_peers_count >= BOOT_COMPLETE
+			&& pDhtImpl->_dht_request_response >= 2) {
 
 			if (pDhtImpl->_dht_events)
 				pDhtImpl->_dht_events->bootstrap_state_changed(
