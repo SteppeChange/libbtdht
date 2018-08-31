@@ -2315,7 +2315,7 @@ public:
 
 	void SaveState(void* user_data) override;
 	void LoadState(void* user_data);
-
+	bool LoadBindIp(BencEntity &data, sockaddr_storage& bind_addr) override;
 };
 
 void LoadDHTFeed();

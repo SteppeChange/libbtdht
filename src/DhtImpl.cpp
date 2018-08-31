@@ -3640,11 +3640,9 @@ void DhtImpl::SaveState(void* user_data)
 	BencEntityMem beMemId(_my_id_bytes, DHT_ID_SIZE);
 	dict->Insert("id", beMemId);
 
+	// Save Public IP
 	if (_ip_counter) {
 		byte buf[256];
-		// we found a potential external IP for us. Place
-			// one vote for this IP, just to seed it with something
-
 		SockAddr addr;
 		_ip_counter->GetIPv4(addr);
 		size_t iplen = addr.compact(buf, true);
@@ -3652,8 +3650,18 @@ void DhtImpl::SaveState(void* user_data)
 		dict->Insert("ip", beMemIP);
 	}
 
-	std::vector<PackedDhtPeer> peer_list(0);
+	// Save bind IP
+	UDPSocketInterface *socketMgr = _udp_socket_mgr;
+	if(socketMgr)
+	{
+		byte buf[256];
+		SockAddr bindaddr = socketMgr->GetBindAddr();
+		size_t iplen = bindaddr.compact(buf, true);
+		BencEntityMem beMemIP(buf, iplen);
+		dict->Insert("ipbind", beMemIP);
+	}
 
+	std::vector<PackedDhtPeer> peer_list(0);
 	for (int i = 0; i < _buckets.size(); i++) {
 		DhtBucket &bucket = *_buckets[i];
 		if (bucket.span < _lowest_span) _lowest_span = bucket.span;
@@ -3685,6 +3693,25 @@ void DhtImpl::SaveState(void* user_data)
 	std::string b = base.Serialize();
     
 	_save_callback(user_data, (const byte*)b.c_str(), b.size());
+}
+
+
+bool DhtImpl::LoadBindIp(BencEntity &data, sockaddr_storage& bind_addr)
+{
+	BencEntity base;
+	BencodedDict *dict = base.AsDict(&data);
+	if (dict) {
+		size_t ip_len = 0;
+		byte *ip = (byte *) dict->GetString("ipbind", &ip_len);
+		if (ip) {
+			SockAddr addr;
+			if (addr.from_compact(ip, ip_len))
+				bind_addr = addr.get_sockaddr_storage();
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void DhtImpl::LoadState(void* user_data)

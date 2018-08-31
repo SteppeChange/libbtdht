@@ -157,6 +157,8 @@ public:
 		with_cas = 8, // use cas for DHT put
 	};
 
+	// load from cache
+	virtual bool LoadBindIp(BencEntity &data, sockaddr_storage& bind_addr) = 0;
 	virtual bool handleReadEvent(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr) = 0;
 	virtual bool handleICMP(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr) = 0;
 	virtual void Tick() = 0;
