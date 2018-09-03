@@ -2285,14 +2285,15 @@ public:
 	void OnAddNodeReply(void*& userdata, const DhtPeerID &peer_id
 		, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
 
-	void OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
+	void OnPong(void*& userdata, const DhtPeerID &peer_id
+        , DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
 
 	// the respons from a NICE ping (part of bucket maintanence)
 	void OnPingReply(void*& userdata, const DhtPeerID &peer_id
 		, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
 
-	static void AddNodeCallback(void *userdata, void *data2, int error
-		, cstr hostname, const SockAddr& ip, uint32 time);
+	//static void AddNodeCallback(void *userdata, void *data2, int error
+	//	, cstr hostname, const SockAddr& ip, uint32 time);
 
 	void SetId(DhtID id);
 
@@ -2315,7 +2316,7 @@ public:
 
 	void SaveState(void* user_data) override;
 	void LoadState(void* user_data);
-	bool LoadBindIp(BencEntity &data, sockaddr_storage& bind_addr) override;
+	static bool LoadBindIp(BencEntity &data, sockaddr_storage& bind_addr);
 };
 
 void LoadDHTFeed();
