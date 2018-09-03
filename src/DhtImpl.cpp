@@ -1115,7 +1115,10 @@ uint DhtImpl::CopyPeersFromBucket(uint bucket_id, DhtPeerID **list
         // if lastContactTime is 0, it means we have never sent any query and seen
         // a response from this peer.
         if ((peer->lastContactTime != 0 && peer->num_fail == 0) || --wantfail >= 0) {
-            
+
+        	if(wantfail==-1)
+        		assert(peer->lastContactTime != 0);
+
             // TODO: v6
             if (!peer->id.addr.isv4())
                 continue;
@@ -1247,8 +1250,7 @@ uint DhtImpl::FindNodes(const DhtID &target, DhtPeerID **list, uint numwant
 int DhtImpl::BuildFindNodesPacket(smart_buffer &sb, DhtID &target_id, int size
 	, SockAddr const& requestor, bool send_punches)
 {
-    time_t now = time(nullptr);
-    
+
 	DhtPeerID *list[KADEMLIA_K];
 	uint n = FindNodes(target_id, list, sizeof(list)/sizeof(list[0]), 0
 		, _enable_quarantine ? CROSBY_E : 0);
@@ -1813,13 +1815,14 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	const uint16 mtu = GetUDP_MTU(peerID.addr);
 	assert(size <= mtu);
 
-	BuildFindNodesPacket(sb, info_hash_id, mtu - size, peerID.addr);
-	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
-
 	debug_log("<<< get_peers: id='%s', info_hash='%s', token='%s' ip: %s",
 			 format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(),
 			 hexify(ttoken.value).c_str(),
 			 print_sockaddr(peerID.addr).c_str());
+
+
+	BuildFindNodesPacket(sb, info_hash_id, mtu - size, peerID.addr);
+	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
 
 	if (has_values) {
 		int left = mtu - (sb.length() + 10);
@@ -2860,11 +2863,11 @@ uint DhtImpl::PingStalestNode()
 		DhtBucket &bucket = *_buckets[bucket_order[i]];
 		for (DhtPeer *peer = bucket.peers.first(); peer != NULL; peer=peer->next) {
 
-			if (!peer->lastContactTime) {
+			if (!peer->lastPingedTime) {
 				oldest = peer;
 				goto done;
 			}
-			if (oldest == NULL || peer->lastContactTime < oldest->lastContactTime) {
+			if (oldest == NULL || peer->lastPingedTime < oldest->lastPingedTime) {
 				oldest = peer;
 			}
 		}
@@ -2873,7 +2876,8 @@ done:
 
 	if (oldest == NULL) return 0;
 
-	oldest->lastContactTime = time(NULL);
+//	oldest->lastContactTime = time(NULL);
+	oldest->lastPingedTime = time(NULL);
 	DhtRequest *req = SendFindNode(oldest->id);
     
     if (req == NULL) return 0;
@@ -3911,6 +3915,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	candidateNode.num_fail = 0;
 	candidateNode.first_seen = now;
 	candidateNode.lastContactTime = seen ? now : 0;
+	candidateNode.lastPingedTime = seen ? now : 0;
 	candidateNode.origin = origin;
 
 	// try putting the node in the active node list (or updating it if it's already there)
@@ -6269,6 +6274,9 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		if (candidateNode.lastContactTime > p->lastContactTime)
 			p->lastContactTime = candidateNode.lastContactTime;
 
+		if (candidateNode.lastPingedTime > p->lastPingedTime)
+			p->lastPingedTime = candidateNode.lastPingedTime;
+
 		if (p->first_seen == 0)
 			p->first_seen = candidateNode.first_seen;
 
@@ -6302,6 +6310,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->ComputeSubPrefix(span, KADEMLIA_BUCKET_SIZE_POWER);
 		peer->num_fail = 0;
 		peer->lastContactTime = candidateNode.lastContactTime;
+		peer->lastPingedTime = candidateNode.lastPingedTime;
 		peer->first_seen = candidateNode.first_seen;
 		peer->rtt = candidateNode.rtt;
 #if g_log_dht

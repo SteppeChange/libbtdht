@@ -690,6 +690,8 @@ public:
 	// time of last contact with this peer
 	// lastContactTime may be 0, in case we have not contacted this node yet
 	time_t lastContactTime;
+	// for PingStalestNode alghorithm
+	time_t lastPingedTime;
 
 	// round trip time of this node. This is
 	// a sliding average. Every time we hear from this
@@ -721,6 +723,7 @@ public:
 		, subPrefixPositionBit(0)
 		, num_fail(0)
 		, lastContactTime(0)
+		, lastPingedTime(0)
 		, rtt(WRONG_RTT)
 		, first_seen(0)
 		, next(NULL)
@@ -740,6 +743,7 @@ inline void DhtPeer::CopyAllButNext(const DhtPeer &src)
 	id = src.id;
 	num_fail = src.num_fail;
 	lastContactTime = src.lastContactTime;
+	lastPingedTime = src.lastPingedTime;
 	rtt = src.rtt;
 	first_seen = src.first_seen;
 	client = src.client;
