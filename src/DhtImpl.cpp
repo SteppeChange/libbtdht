@@ -579,7 +579,7 @@ bool DhtImpl::AccountAndSend(const DhtPeerID &peer, const void *data, int len,
 	return true;
 }
 
-void DhtImpl::SendTo(SockAddr const& peer, const void *data, uint len)
+void DhtImpl::SendTo(SockAddr const& unresolved_peer, const void *data, uint len)
 {
 	if (!_dht_enabled) return;
 
@@ -593,8 +593,12 @@ void DhtImpl::SendTo(SockAddr const& peer, const void *data, uint len)
 	_dht_quota -= len;
 
 	//Need replace by the new WinRT udp socket implementation
-	UDPSocketInterface *socketMgr = (peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr;
+	UDPSocketInterface *socketMgr = (unresolved_peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr;
 	assert(socketMgr);
+
+	SockAddr peer = unresolved_peer;
+	peer = ipv4ipv6_resolve(peer);
+
 	socketMgr->Send(peer, (byte *) data, len);
 }
 
@@ -980,7 +984,7 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
 	DhtIDToBytes(target_bytes, target);
 
     DhtPeerID peer_id = unresolved_peer_id;
-    peer_id.addr = ipv4ipv6_resolve(unresolved_peer_id.addr);
+//    peer_id.addr = ipv4ipv6_resolve(unresolved_peer_id.addr);
     if(peer_id.addr.get_port() == INVALID_PORT) {
         error_log("SendFindNode fails, unresolved peer addr");
         return NULL;
@@ -2364,7 +2368,7 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 	// Nodes that are read_only do not respond to queries, so we don't
 	// want to add them to the buckets.  They also will not be pinged.
 	if (!message.read_only && message.dhtCommand!=DHT_QUERY_PING && message.dhtCommand!=DHT_QUERY_PUNCH) {
-		DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_INCOMING, false);
+		DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_INCOMING, true);
 		// Update version
 		if (peer != NULL) {
 			peer->client.from_compact(message.version.b, message.version.len);
@@ -2422,7 +2426,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
         // for bootstrup its wrong, see // _temp_nodes[c].id.id[4] = rand();
 		if (!IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
 			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
-			warnings_log("Warning: Response ID != Request ID %s %s",
+			warnings_log("Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
                       format_dht_id(req->peer.id).c_str());
 
@@ -2442,8 +2446,14 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
-        warnings_log("Warning: Response IP != Request IP / %s != %s",
-					 print_sockaddr(peerID.addr).c_str(), print_sockaddr(req->peer.addr).c_str());
+        if(peerID.addr._family==AF_INET6 && req->peer.addr._family==AF_INET)
+		{
+			debug_log("Rewrite IPV6: Response IP != Request IP / %s != %s", print_sockaddr(peerID.addr).c_str(), print_sockaddr(req->peer.addr).c_str());
+			peerID.addr = req->peer.addr;
+		}
+		else
+			warnings_log("Response IP != Request IP / %s != %s", print_sockaddr(peerID.addr).c_str(), print_sockaddr(req->peer.addr).c_str());
+
 	}
 
 	Account(DHT_BW_IN_REPL, pkt_size);
@@ -3805,8 +3815,12 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 bool DhtImpl::IsBootstrap(const SockAddr& addr)
 {
 	for (auto const& router : _bootstrap_routers)
+    {
+//        std::string left = print_sockaddr(addr);
+//        std::string right = print_sockaddr(router);
 		if (addr.ip_eq(router) && addr._port == router._port)
 			return true;
+    }
 	return false;
 }
 
@@ -3849,15 +3863,11 @@ bool DhtImpl::IsBootstrap(const SockAddr& addr)
 	Note:  the 'origin' argument is included here for historical and possible future
 		   debugging purposes.  It is not currently used by Update().
 */
+
+// seen means that we have direct node connect (incoming request or responce)
+
 DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 {
-	// if seen == true, a true RTT must be provided
-	assert(rtt != WRONG_RTT || seen == false);
-
-#if g_log_dht
-	assert(origin >= 0);
-	assert(origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 
 	if (id.addr.get_port() == 0)
 		return NULL;
@@ -3907,7 +3917,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	candidateNode.origin = origin;
 
 	// try putting the node in the active node list (or updating it if it's already there)
-	bool added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::peer_list, &returnNode);
+	bool added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::peer_list, &returnNode, seen);
 
 	// the node was already in or added to the main bucket
 	if (added)
@@ -3945,7 +3955,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 		// The replacement candidate isn't errored, see if there is a place
 		// for it in the reserve list.
 		DhtPeer* replaceNode = NULL;
-		added = bucket.InsertOrUpdateNode(this, *returnNode, DhtBucket::replacement_list, &replaceNode);
+		added = bucket.InsertOrUpdateNode(this, *returnNode, DhtBucket::replacement_list, &replaceNode, seen);
 		if (added) {
 			// the peer list node is now in the replacement list, put the new
 			// node in the peer list
@@ -3962,7 +3972,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	} else {
 		// no suitable replacement node was identified in the active peers list,
 		// see if the candidate node belongs in the replacement list
-		added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::replacement_list, &returnNode);
+		added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::replacement_list, &returnNode, seen);
 		if(!added){
 			// The candidate node was not added to the bucket; see if a node in the replacement bucket
 			// can be replaced with the candidate node to either improve the sub-prefix distribution
@@ -4332,7 +4342,7 @@ void DhtLookupScheduler::IssueQuery(int nodeIndex)
 	DhtFindNodeEntry &unresNodeInfo = processManager[nodeIndex];
 	unresNodeInfo.queried = QUERIED_YES;
     DhtFindNodeEntry resNodeInfo = unresNodeInfo;
-    resNodeInfo.id.addr = impl->ipv4ipv6_resolve(resNodeInfo.id.addr);
+//    resNodeInfo.id.addr = impl->ipv4ipv6_resolve(resNodeInfo.id.addr);
     if(resNodeInfo.id.addr.get_port() == INVALID_PORT) {
         error_log("IssueQuery fails, unresolved peer addr");
         return;
@@ -4977,7 +4987,7 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, format_dht_id(nodeInfo.id.id).c_str());
 
     SockAddr addr = nodeInfo.id.addr;
-    addr = impl->ipv4ipv6_resolve(addr);
+//    addr = impl->ipv4ipv6_resolve(addr);
     if(addr.get_port() == INVALID_PORT) {
         error_log("GetPeersDhtProcess::DhtSendRPC fails, unresolved peer addr");
         return;
@@ -5144,7 +5154,7 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	smart_buffer sb(buf, bufLen);
 
     SockAddr addr = nodeInfo.id.addr;
-    addr = impl->ipv4ipv6_resolve(addr);
+//    addr = impl->ipv4ipv6_resolve(addr);
     if(addr.get_port() == INVALID_PORT) {
         error_log("AnnounceDhtProcess::DhtSendRPC fails, unresolved peer addr");
         return;
@@ -6229,7 +6239,7 @@ DhtPeer* DhtBucket::FindNode(const DhtID& id)
 	is used on the bucket.
 */
 bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNode
-	, BucketListType bucketType, DhtPeer** pout)
+	, BucketListType bucketType, DhtPeer** pout, bool seen)
 {
 	DhtBucketList &bucketList = (bucketType == peer_list) ? peers : replacement_peers;
 
@@ -6272,11 +6282,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 				p->rtt = (p->rtt * 3 + candidateNode.rtt) / 4;
 		}
         
-        // NODE address update
-        // p->rtt == WRONG_RTT means, that we have no response from this node
-        // so we need to update addr, maybe new addr allows to connect
-        // we can improve this rule - accept only response
-        if(p->rtt == WRONG_RTT)
+ 		if(seen == true)
         {
             if(p->id.addr != candidateNode.id.addr)
             {
@@ -6742,7 +6748,7 @@ void DhtImpl::punch(HolePunch type, int punch_id,
 
 	for(const auto &destination : destinations) {
 
-		SockAddr dest = ipv4ipv6_resolve(destination);
+		SockAddr dest = destination; // ipv4ipv6_resolve(destination);
 		if (dest.get_port() == INVALID_PORT) {
 			error_log("punch fails, unresolved peer addr");
 			return;
