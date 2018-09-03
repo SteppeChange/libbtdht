@@ -233,7 +233,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x1;
-	_dht_utversion[3] = 0x4;
+	_dht_utversion[3] = 0x5;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -786,10 +786,6 @@ void DhtImpl::DumpBuckets()
 			} else {
 				strcpy(age, "?");
 			}
-//			do_log("    %s %A fail:%d seen:%d age:%s ver:%s rtt:%d",
-//				 format_dht_id(p->id.id),
-//				 &p->id.addr,  p->num_fail, p->lastContactTime, age,
-//				 p->client.str(), p->rtt);
 		}
 	}
 	trace_log("Total peers: %d (in replacement cache %d)", total, total_cache);
@@ -1036,10 +1032,11 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 		// Check if the peer is already in the bucket
 		if (id != p->id) continue;
 
-		debug_log("node %s %s failed (%d)"
+        debug_log("node %s %s failed (%d) failed, num_fail:%d force: %d"
                   , print_sockaddr(p->id.addr).c_str()
                   , format_dht_id(p->id.id).c_str()
-                  , transaction);
+                  , transaction
+                  , p->num_fail, force_remove);
 
 		// rtt is set to WRONG_RTT until we receive the first response from this node
 		if (++p->num_fail >= (p->rtt != WRONG_RTT ? FAIL_THRES : FAIL_THRES_NOCONTACT)
@@ -1057,7 +1054,7 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			// remove the node from its bucket and move one node from the
 			// replacement cache
 
-			debug_log("node %s %s was removed form bucket"
+			debug_log("node %s %s was removed from bucket"
 					, print_sockaddr(p->id.addr).c_str()
 					, format_dht_id(p->id.id).c_str());
 
@@ -1104,28 +1101,28 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 
 
 uint DhtImpl::CopyPeersFromBucket(uint bucket_id, DhtPeerID **list
-	, uint numwant, int &wantfail, time_t min_age)
+                                  , uint numwant, int &wantfail, time_t min_age)
 {
-	DhtBucketList &bucket = _buckets[bucket_id]->peers;
-	uint n = 0;
-	time_t now = time(nullptr);
-	for (DhtPeer *peer = bucket.first(); peer && n < numwant; peer=peer->next) {
-
-		if (now - peer->first_seen < min_age) {
-			continue;
-		}
-
-		// if lastContactTime is 0, it means we have never sent any query and seen
-		// a response from this peer.
-		if ((peer->lastContactTime != 0 && peer->num_fail == 0) || --wantfail >= 0) {
-
-			// TODO: v6
-			if (!peer->id.addr.isv4())
-				continue;
-			list[n++] = &peer->id;
-		}
-	}
-	return n;
+    DhtBucketList &bucket = _buckets[bucket_id]->peers;
+    uint n = 0;
+    time_t now = time(nullptr);
+    for (DhtPeer *peer = bucket.first(); peer && n < numwant; peer=peer->next) {
+        
+        if (now - peer->first_seen < min_age) {
+            continue;
+        }
+        
+        // if lastContactTime is 0, it means we have never sent any query and seen
+        // a response from this peer.
+        if ((peer->lastContactTime != 0 && peer->num_fail == 0) || --wantfail >= 0) {
+            
+            // TODO: v6
+            if (!peer->id.addr.isv4())
+                continue;
+            list[n++] = &peer->id;
+        }
+    }
+    return n;
 }
 
 struct dht_node_comparator
@@ -1250,6 +1247,8 @@ uint DhtImpl::FindNodes(const DhtID &target, DhtPeerID **list, uint numwant
 int DhtImpl::BuildFindNodesPacket(smart_buffer &sb, DhtID &target_id, int size
 	, SockAddr const& requestor, bool send_punches)
 {
+    time_t now = time(nullptr);
+    
 	DhtPeerID *list[KADEMLIA_K];
 	uint n = FindNodes(target_id, list, sizeof(list)/sizeof(list[0]), 0
 		, _enable_quarantine ? CROSBY_E : 0);
@@ -1273,9 +1272,7 @@ int DhtImpl::BuildFindNodesPacket(smart_buffer &sb, DhtID &target_id, int size
 	sb("5:nodes%d:", n * node_size);
 	for(uint i=0; i!=n; i++) {
 		sb(list[i]->id)(list[i]->addr);
-#if USE_HOLEPUNCH
-		if (send_punches) SendPunch(list[i]->addr, requestor);
-#endif
+        debug_log("add to responce: id=:%s, ip:%s ", format_dht_id(list[i]->id).c_str(), print_sockaddr(list[i]->addr).c_str());
 	}
 	assert(sb.length() >= 0);
 	return n;
@@ -2995,7 +2992,7 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 		|| (flags & ANY_ERROR)) {
 
 		// Mark that the peer errored
-		UpdateError(peer_id, req->tid, flags & ICMP_ERROR);
+		UpdateError(peer_id, req->tid, (flags & ICMP_ERROR) || (flags & ID_MISMATCH));
 		return;
 	}
 
@@ -6282,17 +6279,15 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 				p->rtt = (p->rtt * 3 + candidateNode.rtt) / 4;
 		}
         
- 		if(seen == true)
+        // seen == true means that we have incoming request or responce from this node, so the addr is true
+        if(seen == true && p->id.addr != candidateNode.id.addr)
         {
-            if(p->id.addr != candidateNode.id.addr)
-            {
-                debug_log("node addr was changed %s -> %s", print_sockaddr(p->id.addr).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
+            debug_log("node addr was changed %s -> %s", print_sockaddr(p->id.addr).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
 #ifdef _DEBUG
-                std::string newaddr = print_sockaddr(candidateNode.id.addr);
-                if(newaddr.find("192.168")!=std::string::npos)
-                    error_log("node addr local %s", newaddr.c_str());
+            std::string newaddr = print_sockaddr(candidateNode.id.addr);
+            if(newaddr.find("192.168")!=std::string::npos)
+                error_log("node addr local %s", newaddr.c_str());
 #endif
-            }
             p->id.addr = candidateNode.id.addr;
         }
         
