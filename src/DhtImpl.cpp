@@ -230,6 +230,8 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_ping_batching = 1;
 	_enable_quarantine = true;
 
+	_init_user_data = 0;
+
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x1;
@@ -337,6 +339,7 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 {
 	_udp_socket_mgr = udp_socket_mgr;
 	_udp6_socket_mgr = udp6_socket_mgr;
+	_init_user_data = user_data;
 
 	// Initialize the buckets
 	for (int i = 0; i < 32; ++i) {
@@ -3808,6 +3811,8 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 
 		_lastLeadingAddress = tempWinner;
 
+		_save_callback(_init_user_data,0,0);
+
 		Restart();
 
 	}
@@ -4441,6 +4446,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 	// extract the nodes from the reply
 	if(flags & NORMAL_RESPONSE)
 	{
+        
 		// extract the possible reply arguments
 		Buffer nodes;
 		Buffer info_hash;

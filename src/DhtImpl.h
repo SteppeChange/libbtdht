@@ -2130,6 +2130,9 @@ public:
 	// out to requestors
 	bool _enable_quarantine;
 
+	// init user_data
+	void* _init_user_data;
+
 	void Account(int slot, int size);
 
 	void DumpAccountingInfo();
