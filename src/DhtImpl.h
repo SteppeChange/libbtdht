@@ -845,9 +845,6 @@ struct DhtRequest {
 	// This is specified in the GetTickCount64() space
 	uint64 time;
 
-#if g_log_dht
-	uint origin;
-#endif
 };
 
 
@@ -2045,11 +2042,8 @@ public:
 	// Possible states for _dht_bootstrap
 	enum {
 		bootstrap_complete = -2, 	// -2: bootstrap find_nodes complete
-		bootstrap_ping_replied,		// -1: bootstrap ping has replied
-		valid_response_received,		//  0: a vaild bootstrapping
-									// response from dht routers has been received
-		not_bootstrapped,			//  1: dht not bootstrapped (initial state)
-		bootstrap_error_received	// >1: an error was received, _dht_bootstrap set with a large number of seconds for a count-down
+		not_bootstrapped = 0,			//  1: dht not bootstrapped (initial state)
+		wait_for_bootstrap = 15
 	};
 
 	enum {
@@ -2310,6 +2304,8 @@ public:
 	bool ParseKnownPackets(const SockAddr& addr, byte *buf, int pkt_size);
 	bool ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr) override;
 
+	// check boot sucess and call success callback
+	bool BootSuccessСheckup();
 
 	// Save all non-failed peers.
 	// Save my peer id.

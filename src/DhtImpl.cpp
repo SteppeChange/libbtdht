@@ -277,12 +277,6 @@ DhtImpl::~DhtImpl()
 {
 	info_log("Kademlia library releasing");
 
-#ifdef _DEBUG_DHT
-	if (_lookup_log)
-		fclose(_lookup_log);
-	if (_bootstrap_log)
-		fclose(_bootstrap_log);
-#endif
 
 	for(int i = 0; i < _buckets.size(); i++) {
 		for (DhtPeer **peer = &_buckets[i]->peers.first(); *peer;) {
@@ -882,10 +876,6 @@ void DhtImpl::SplitBucket(uint bucket_id)
 DhtRequest *DhtImpl::LookupRequest(uint tid)
 {
 	for(DhtRequest *req = _requests.first(); req; req=req->next) {
-#if g_log_dht
-		assert(req->origin >= 0);
-		assert(req->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 		if (req->tid == tid)
 			return req;
 	}
@@ -911,9 +901,6 @@ DhtRequest *DhtImpl::AllocateRequest(const DhtPeerID &peer_id)
 	req->peer = peer_id;
 	req->time = get_milliseconds();
 	req->_pListener = NULL;
-#if g_log_dht
-	req->origin = DHT_ORIGIN_UNKNOWN;
-#endif
 	return req;
 }
 
@@ -1070,10 +1057,6 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			_dht_peers_count--;
 			assert(_dht_peers_count >= 0);
 
-			if (_dht_bootstrap == valid_response_received) {
-				debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-			}
-
 		}
 		return; // nodes in the primary list and the reserve list should be mutually exclusive
 	}
@@ -1092,10 +1075,6 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
 			assert(_dht_peers_count >= 0);
-
-			if (_dht_bootstrap == valid_response_received) {
-				debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-			}
 
 		}
 		break;
@@ -1172,7 +1151,7 @@ int DhtImpl::AssembleNodeList(const DhtID &target, DhtPeerID** ids
 	// Only add the bootstrap servers if this is an explicit bootstrap or exponential
 	// backoff is not in effect. This is important to avoid hammering the bootstrap servers
 	// if the user's internet connection is broken such that it cannot receive responses.
-	if (num < minwant && (bootstrap || _dht_bootstrap < bootstrap_error_received)) {
+	if (num < minwant && (bootstrap || _dht_bootstrap == bootstrap_complete)) {
 		if (_bootstrap_routers.size() > numwant - num) {
 			num = numwant - _bootstrap_routers.size();
 			assert(num <= numwant);
@@ -2643,7 +2622,6 @@ void DhtImpl::DoBootstrap()
 	debug_log("start bootstrap");
 	_bootstrap_start = get_milliseconds();
 	debug_log("[0] start\n");
-	debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 	DhtID target = _my_id;
 	target.id[4] ^= 1;
 	// Here, "this" is an IDhtProcessCallbackListener*, which leads
@@ -2889,6 +2867,34 @@ done:
 	return req->tid;
 }
 
+
+// We need to make sure we do have more than 2 connected DHT nodes before finishing the bootstrapping.
+// That was due to the timeout error happened in the first DHT nodes lookup, which means we only
+// connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
+// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
+bool DhtImpl::BootSuccessСheckup() {
+
+	if (_dht_bootstrap == DhtImpl::bootstrap_complete)
+		return true;
+
+	if (_dht_bootstrap != DhtImpl::bootstrap_complete
+		&& _dht_peers_count >= BOOT_COMPLETE
+		&& _dht_request_response >= 2) {
+
+		if (_dht_events)
+			_dht_events->bootstrap_state_changed(
+					EBootSuccess,
+					_my_id.sha1(),
+					_lastLeadingAddress.get_sockaddr_storage(),
+					_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
+
+		return true;
+	}
+
+	return false;
+}
+
+
 // Bootstrap complete.
 void DhtImpl::ProcessCallback()
 {
@@ -2896,23 +2902,16 @@ void DhtImpl::ProcessCallback()
 	// That was due to the timeout error happened in the first DHT nodes lookup, which means we only
 	// connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
 	// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
-	if (_dht_peers_count >= BOOT_COMPLETE
-	&& _dht_request_response >= 2) {
+	if (BootSuccessСheckup()) {
+
 		_dht_bootstrap = bootstrap_complete;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
 
-		debug_log("DhtImpl::ProcessCallback() [ bootstrap done (%d)], %d miliseconds, %d peers",
-				  _dht_bootstrap, uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-
-		if(_dht_events)
-			_dht_events->bootstrap_state_changed(
-					EBootSuccess,
-					_my_id.sha1(),
-					_lastLeadingAddress.get_sockaddr_storage(),
-					_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
+		debug_log("DhtImpl::ProcessCallback()  %d miliseconds, %d peers", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 
 	} else {
-		_dht_bootstrap = 15; // 15 sec time out for boot restart
+
+		_dht_bootstrap = wait_for_bootstrap;
 
         debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
 		debug_log("[%u] failed %u nodes\n\n\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
@@ -3287,10 +3286,6 @@ void DhtImpl::Tick()
 	for(DhtRequest **reqp = &_requests.first(), *req; (req = *reqp) != NULL; ) {
 		int delay = (int)(get_milliseconds() - req->time);
 
-#if g_log_dht
-		assert(req->origin >= 0);
-		assert(req->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 
 		// Support time that goes backwards
 		if (delay < 0) {
@@ -3335,15 +3330,11 @@ void DhtImpl::Tick()
 		_immutablePutStore.UpdateUsage(time(NULL));
 		_mutablePutStore.UpdateUsage(time(NULL));
 
-#if USE_HOLEPUNCH
-		_recent_punch_requests.clear();
-		_recent_punches.clear();
-#endif
 	}
 
-	if (_dht_bootstrap > valid_response_received) {
+	if (_dht_bootstrap >= not_bootstrapped) {
 		// Boot-strapping.
-		if (--_dht_bootstrap == valid_response_received) {
+		if (_dht_bootstrap-- == not_bootstrapped) {
 
 			DoBootstrap();
 		}
@@ -3499,10 +3490,6 @@ void DhtImpl::Restart() {
 	_dht_peers_count = 0;
 	_dht_request_response = 0;
 
-	if (_dht_bootstrap == valid_response_received) {
-		debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
-	}
-
 	// Initialize the buckets
 	for (int i = 0; i < 32; ++i) {
 		DhtBucket *bucket = CreateBucket(i);
@@ -3517,18 +3504,7 @@ void DhtImpl::Restart() {
 		i != end; ++i) {
 		DhtPeer* p = *i;
 
-#if g_log_dht
-		assert(p->origin >= 0);
-		assert(p->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
-
-		Update(p->id
-#if g_log_dht
-			, p->origin
-#else
-			, 0
-#endif
-			, p->rtt != WRONG_RTT, p->rtt);
+		Update(p->id, 0, p->rtt != WRONG_RTT, p->rtt);
 
 		_dht_peer_allocator.Free(p);
 	}
@@ -3538,6 +3514,8 @@ void DhtImpl::Restart() {
 	RandomizeWriteToken();
 	_dht_enabled = old_g_dht_enabled;
 	_closing = !_dht_enabled;
+
+
 }
 
 bool DhtImpl::handleICMP(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr)
@@ -6177,9 +6155,6 @@ bool DhtBucket::RemoveFromList(DhtImpl* pDhtImpl, const DhtID &id, BucketListTyp
 		pDhtImpl->_dht_peers_count--;
 		assert(pDhtImpl->_dht_peers_count >= 0);
 
-		if (pDhtImpl->_dht_bootstrap == DhtImpl::valid_response_received) {
-			debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - pDhtImpl->_bootstrap_start), pDhtImpl->_dht_peers_count);
-		}
 		return true;
 	}
 	return false;
@@ -6251,10 +6226,6 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 {
 	DhtBucketList &bucketList = (bucketType == peer_list) ? peers : replacement_peers;
 
-#if g_log_dht
-	assert(candidateNode.origin >= 0);
-	assert(candidateNode.origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 
 	uint n = 0;	// number of peers in bucket-list
 	// for all peers in the bucket...
@@ -6270,12 +6241,9 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		}
 
 		// Check if the peer is already in the bucket
-		if (candidateNode.id.id != p->id.id) continue;
+		if (candidateNode.id.id != p->id.id)
+			continue;
 
-#if g_log_dht
-		assert(p->origin >= 0);
-		assert(p->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 		p->num_fail = 0;
 		if (candidateNode.lastContactTime > p->lastContactTime)
 			p->lastContactTime = candidateNode.lastContactTime;
@@ -6297,15 +6265,12 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
         if(seen == true && p->id.addr != candidateNode.id.addr)
         {
             debug_log("node addr was changed %s -> %s", print_sockaddr(p->id.addr).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
-#ifdef _DEBUG
-            std::string newaddr = print_sockaddr(candidateNode.id.addr);
-            if(newaddr.find("192.168")!=std::string::npos)
-                error_log("node addr local %s", newaddr.c_str());
-#endif
             p->id.addr = candidateNode.id.addr;
         }
         
 		if (pout) *pout = p;
+
+		pDhtImpl->BootSuccessСheckup();
 		return true;
 	}
 
@@ -6319,35 +6284,18 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->lastPingedTime = candidateNode.lastPingedTime;
 		peer->first_seen = candidateNode.first_seen;
 		peer->rtt = candidateNode.rtt;
-#if g_log_dht
-		peer->origin = candidateNode.origin;
-#endif
+
 		memset(&peer->client, 0, sizeof(peer->client));
 		debug_log("Add node %s %s", format_dht_id(peer->id.id).c_str(), print_sockaddr(peer->id.addr).c_str());
 
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
 
-		if (pDhtImpl->_dht_bootstrap == DhtImpl::valid_response_received) {
-			debug_log("[%u] nodes: %u\n", uint(get_milliseconds() - pDhtImpl->_bootstrap_start), pDhtImpl->_dht_peers_count);
-		}
-
 		debug_log("Routing table num_nodes=%d", pDhtImpl->_dht_peers_count);
 
 		if (pout) *pout = peer;
 
-		if (pDhtImpl->_dht_bootstrap == DhtImpl::not_bootstrapped
-			&& pDhtImpl->_dht_peers_count >= BOOT_COMPLETE
-			&& pDhtImpl->_dht_request_response >= 2) {
-
-			if (pDhtImpl->_dht_events)
-				pDhtImpl->_dht_events->bootstrap_state_changed(
-						EBootSuccess,
-						pDhtImpl->_my_id.sha1(),
-						pDhtImpl->_lastLeadingAddress.get_sockaddr_storage(),
-						pDhtImpl->_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
-		}
-
+		pDhtImpl->BootSuccessСheckup();
 
 		return true;
 	}
