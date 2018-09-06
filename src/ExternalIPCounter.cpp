@@ -111,9 +111,10 @@ void ExternalIPCounter::CountIP( const SockAddr& addr, int weight ) {
 	std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, weight));
 
 	size_t ex_ips = _map.size();
-	if(ex_ips==3) // 3 different ip's
+	if(ex_ips==2) // 2 different ip's
 	{
-        warnings_log("May be symmetric NAT detected\n");
+		if(ex_ips==3)
+			warnings_log("May be symmetric NAT detected\n");
 		for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
 			debug_log("Unique external IP: %s\n", print_sockaddr(it->first).c_str());
 		}

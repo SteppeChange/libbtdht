@@ -3027,7 +3027,7 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 			if (peer.id != _my_id && peer.addr.get_port() != 0) {
 
                 debug_log("insert/update (%d) candidate %s %s",
-                          Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
+                          Read32(message.transactionID.b), format_dht_id(peer.id).c_str(), print_sockaddr(peer.addr).c_str());
 
 				// Update the internal tables with this peer's information
 				// The contacted attribute is set to false because we haven't
