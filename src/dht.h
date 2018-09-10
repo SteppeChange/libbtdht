@@ -389,7 +389,7 @@ inline sockaddr_storage ipv4ipv6_resolve(sockaddr_storage const& peer, int famil
 
 		struct addrinfo hints, *res0;
 		memset(&hints, 0, sizeof(hints));
-		hints.ai_family = PF_UNSPEC;
+		hints.ai_family = PF_UNSPEC; // family ?
 		hints.ai_socktype = SOCK_DGRAM;
 		hints.ai_protocol = IPPROTO_UDP;
 		hints.ai_flags = AI_PASSIVE & AI_NUMERICHOST; // AI_NUMERICHOST flag suppresses any potentially lengthy network host address lookups.
