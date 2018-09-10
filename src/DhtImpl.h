@@ -1927,10 +1927,6 @@ public:
 
 	char const* name() const { return "DhtImpl"; }
 
-    // ipv6 support
-    SockAddr ipv4ipv6_resolve(SockAddr const& initial);
-	//--------------------------------------------------------------------------------
-
 
 	DhtID _my_id;
 	byte _my_id_bytes[DHT_ID_SIZE];

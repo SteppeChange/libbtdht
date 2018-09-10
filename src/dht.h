@@ -30,6 +30,7 @@ limitations under the License.
 #include "RefBase.h"
 #include "smart_ptr.h"
 #include <functional>
+#include <netdb.h>
 
 
 class UDPSocketInterface;
@@ -355,6 +356,73 @@ smart_ptr<IDht> create_dht(UDPSocketInterface *udp_socket_mgr, UDPSocketInterfac
 	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip = NULL, DHTEvents* dht_events = NULL);
 
 void set_log_callback(DhtLogCallbacks log);
+
+
+// ipv6 support
+inline sockaddr_storage ipv4ipv6_resolve(sockaddr_storage const& peer, int family)
+{
+	in_port_t port = 0;
+
+	// we cant address ipv4 ip from ipv6 network
+	if(peer.ss_family !=  family)
+	{
+		// resolve target address (peer) to bind interface family
+		std::string addr_name;
+		if (peer.ss_family == AF_INET6) {
+			char buffer[INET6_ADDRSTRLEN];
+			int error = getnameinfo((struct sockaddr const *) &peer, sizeof(sockaddr_in6), buffer, sizeof(buffer), 0, 0,
+									NI_NUMERICHOST);
+			if (error == 0) {
+				addr_name = buffer;
+				port = ((struct sockaddr_in6 const *) &peer)->sin6_port;
+			}
+		}
+		if (peer.ss_family == AF_INET) {
+			char buffer[INET_ADDRSTRLEN];
+			int error = getnameinfo((struct sockaddr const *) &peer, sizeof(sockaddr_in), buffer, sizeof(buffer), 0, 0,
+									NI_NUMERICHOST);
+			if (error == 0) {
+				addr_name = buffer;
+				port = ((struct sockaddr_in const *) &peer)->sin_port;
+			}
+		}
+
+		struct addrinfo hints, *res0;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = PF_UNSPEC;
+		hints.ai_socktype = SOCK_DGRAM;
+		hints.ai_protocol = IPPROTO_UDP;
+		hints.ai_flags = AI_PASSIVE & AI_NUMERICHOST; // AI_NUMERICHOST flag suppresses any potentially lengthy network host address lookups.
+		int error = getaddrinfo(addr_name.c_str(), std::to_string(port).c_str(), &hints, &res0);
+		if (error) {
+			return peer;
+		}
+		sockaddr_storage* resolved_peer = 0;
+		for (struct addrinfo *i = res0; i != nullptr; i = i->ai_next) {
+			if ((i->ai_family == AF_INET) && (family==AF_INET)) {
+				sockaddr_in *v4 = (sockaddr_in *) i->ai_addr;
+				v4->sin_port = port;
+				resolved_peer = (sockaddr_storage*)v4;
+			}
+			if ((i->ai_family == AF_INET6) && (family==AF_INET6)) {
+				sockaddr_in6 *v6 = (sockaddr_in6 *) i->ai_addr;
+				v6->sin6_port = port;
+				resolved_peer = (sockaddr_storage*)v6;
+			}
+		}
+
+//		debug_log("resolving ip family before sending %s -> %s", print_sockaddr(peer).c_str(), print_sockaddr(resolved_peer).c_str());
+        if(resolved_peer)
+            return *resolved_peer;
+        else
+            return peer;
+	}
+	else
+        return peer;
+		
+
+}
+
 
 #endif //__DHT_H__
 

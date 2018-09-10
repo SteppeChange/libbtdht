@@ -130,62 +130,6 @@ std::string format_dht_id(const DhtID &id)
 	return std::string(buf);
 }
 
-SockAddr DhtImpl::ipv4ipv6_resolve(SockAddr const& peer)
-{
-    UDPSocketInterface *socketMgr = (peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr;
-    // we cant address ipv4 ip from ipv6 network
-    if(peer.get_family() !=  socketMgr->GetBindAddr().get_family())
-    {
-        // resolve target address (peer) to bind interface family
-        sockaddr_storage sa = peer.get_sockaddr_storage();
-        std::string addr_name;
-        if (sa.ss_family == AF_INET6) {
-            char buffer[INET6_ADDRSTRLEN];
-            int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in6), buffer, sizeof(buffer), 0, 0,
-                                    NI_NUMERICHOST);
-            if (error == 0)
-                addr_name = buffer;
-                }
-        if (sa.ss_family == AF_INET) {
-            char buffer[INET_ADDRSTRLEN];
-            int error = getnameinfo((struct sockaddr const *) &sa, sizeof(sockaddr_in), buffer, sizeof(buffer), 0, 0,
-                                    NI_NUMERICHOST);
-            if (error == 0)
-                addr_name = buffer;
-                }
-        
-        struct addrinfo hints, *res0;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = PF_UNSPEC;
-        hints.ai_socktype = SOCK_DGRAM;
-        hints.ai_protocol = IPPROTO_UDP;
-        hints.ai_flags = AI_PASSIVE;
-        int error = getaddrinfo(addr_name.c_str(), std::to_string(peer.get_port()).c_str(), &hints, &res0);
-        if (error) {
-            error_log("dht getaddrinfo fails: %d\n", error);
-            return peer;
-        }
-        SockAddr resolved_peer;
-        for (struct addrinfo *i = res0; i != nullptr; i = i->ai_next) {
-            if (i->ai_family == AF_INET && socketMgr->GetBindAddr().isv4()) {
-                sockaddr_in *v4 = (sockaddr_in *) i->ai_addr;
-                resolved_peer = SockAddr(ntohl(v4->sin_addr.s_addr), ntohs(v4->sin_port));
-            }
-            if (i->ai_family == AF_INET6 && socketMgr->GetBindAddr().isv6()) {
-                sockaddr_in6 *v6 = (sockaddr_in6 *) i->ai_addr;
-                resolved_peer = SockAddr(v6->sin6_addr, ntohs(v6->sin6_port));
-            }
-        }
-        
-        debug_log("resolving ip family before sending %s -> %s", print_sockaddr(peer).c_str(), print_sockaddr(resolved_peer).c_str());
-        
-        return resolved_peer;
-    }
-    else
-        return peer;
-
-}
-
 
 //--------------------------------------------------------------------------------
 //
@@ -594,7 +538,7 @@ void DhtImpl::SendTo(SockAddr const& unresolved_peer, const void *data, uint len
 	assert(socketMgr);
 
 	SockAddr peer = unresolved_peer;
-	peer = ipv4ipv6_resolve(peer);
+	peer = ipv4ipv6_resolve(peer.get_sockaddr_storage(), ((peer.isv4()) ? _udp_socket_mgr : _udp6_socket_mgr) ->GetBindAddr().get_family());
 
 	socketMgr->Send(peer, (byte *) data, len);
 }
@@ -970,7 +914,6 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
 	DhtIDToBytes(target_bytes, target);
 
     DhtPeerID peer_id = unresolved_peer_id;
-//    peer_id.addr = ipv4ipv6_resolve(unresolved_peer_id.addr);
     if(peer_id.addr.get_port() == INVALID_PORT) {
         error_log("SendFindNode fails, unresolved peer addr");
         return NULL;
@@ -1568,103 +1511,6 @@ void DhtImpl::AddIP(smart_buffer& sb, byte const* id, SockAddr const& addr)
 	}
 }
 
-
-//--------------------------------------------------------------------------------
-//
-// DHTFEED
-//
-//--------------------------------------------------------------------------------
-
-#if USE_DHTFEED
-void DhtImpl::dht_name_resolved_static(void *ctx, const byte *info_hash, const byte *file_name)
-{
-	DhtImpl *impl = (DhtImpl*)ctx;
-	impl->dht_name_resolved(info_hash, file_name);
-}
-
-#error resolving a name should be promoted to a top level function, and this should be moved out of the DHT
-void DhtImpl::dht_name_resolved(const byte *info_hash, const byte *file_name)
-{
-	DHTFeedItem i;
-	memset(&i, 0, sizeof(i));
-	memcpy(i.info_hash.value, info_hash, sizeof(i.info_hash));
-
-	BtScopedLock l;
-
-	int index = TorrentSession::_dht_feed_items.BisectLeft(i);
-
-	// this shouldn't happen
-	assert(index != TorrentSession::_dht_feed_items.size());
-	if (index == TorrentSession::_dht_feed_items.size()) return;
-
-	DHTFeedItem& item = TorrentSession::_dht_feed_items[index];
-	if (item.name == 0) utf8_to_tstr(&item.name, (char const*)file_name);
-	item.resolving_name = false;
-	LoadDHTFeed();
-}
-
-void DhtImpl::dht_on_scrape_static(void *ctx, const byte *info_hash, int downloaders, int seeds)
-{
-	DhtImpl *impl = (DhtImpl*)ctx;
-	impl->dht_on_scrape(info_hash, downloaders, seeds);
-}
-
-void DhtImpl::dht_on_scrape(const byte *info_hash, int downloaders, int seeds)
-{
-	DHTFeedItem i;
-	memset(&i, 0, sizeof(i));
-	memcpy(i.info_hash.value, info_hash, sizeof(i.info_hash));
-
-	BtScopedLock l;
-
-	int index = TorrentSession::_dht_feed_items.BisectLeft(i);
-
-	// this shouldn't happen
-	assert(index != TorrentSession::_dht_feed_items.size());
-	if (index == TorrentSession::_dht_feed_items.size()) return;
-
-	DHTFeedItem& item = TorrentSession::_dht_feed_items[index];
-	item.downloaders = downloaders;
-	item.seeds = seeds;
-	item.scraping = false;
-}
-
-void DhtImpl::add_to_dht_feed_static(void *ctx, byte const* info_hash, char const* file_name)
-{
-	DhtImpl *impl = (DhtImpl*)ctx;
-	impl->add_to_dht_feed(info_hash, file_name);
-}
-
-void DhtImpl::add_to_dht_feed(byte const* info_hash, char const* file_name)
-{
-	DHTFeedItem i;
-	memset(&i, 0, sizeof(i));
-	memcpy(i.info_hash.value, info_hash, sizeof(i.info_hash));
-
-	BtScopedLock l;
-
-	int index = TorrentSession::_dht_feed_items.BisectLeft(i);
-	if (index == TorrentSession::_dht_feed_items.size()
-		|| memcmp(TorrentSession::_dht_feed_items[index].info_hash.value, info_hash, DHT_ID_SIZE) != 0) {
-		if (file_name) utf8_to_tstr(&i.name, file_name);
-		else i.resolving_name = true;
-		i.scraping = true;
-		TorrentSession::_dht_feed_items.Insort(i);
-
-		DhtID target;
-		CopyBytesToDhtID(target, info_hash);
-		if (file_name == 0) {
-			// resolve the name
-			ResolveName(target, &dht_name_resolved_static, (void*)this);
-		}
-		DoScrape(target, &dht_on_scrape_static, (void*)this);
-	} else if (file_name) {
-		DHTFeedItem& item = TorrentSession::_dht_feed_items[index];
-		if (item.name == 0) utf8_to_tstr(&item.name, file_name);
-	}
-	LoadDHTFeed();
-}
-#endif
 
 void DhtImpl::put_transaction_id(smart_buffer& sb, Buffer tid) {
 	sb("1:t%d:", int(tid.len))(tid);
@@ -2428,7 +2274,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Verify that the source IP is correct.
 	if (!req->peer.addr.ip_eq(peerID.addr)) {
 		Account(DHT_INVALID_PR_IP_MISMATCH, pkt_size);
-        if(peerID.addr._family==AF_INET6 && req->peer.addr._family==AF_INET)
+        if(peerID.addr.get_family()==AF_INET6 && req->peer.addr.get_family()==AF_INET)
 		{
 			debug_log("Rewrite IPV6: Response IP != Request IP / %s != %s", print_sockaddr(peerID.addr).c_str(), print_sockaddr(req->peer.addr).c_str());
 			peerID.addr = req->peer.addr;
@@ -4327,7 +4173,6 @@ void DhtLookupScheduler::IssueQuery(int nodeIndex)
 	DhtFindNodeEntry &unresNodeInfo = processManager[nodeIndex];
 	unresNodeInfo.queried = QUERIED_YES;
     DhtFindNodeEntry resNodeInfo = unresNodeInfo;
-//    resNodeInfo.id.addr = impl->ipv4ipv6_resolve(resNodeInfo.id.addr);
     if(resNodeInfo.id.addr.get_port() == INVALID_PORT) {
         error_log("IssueQuery fails, unresolved peer addr");
         return;
@@ -4342,10 +4187,6 @@ void DhtLookupScheduler::IssueQuery(int nodeIndex)
 void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
-#if g_log_dht
-	assert(req->origin >= 0);
-	assert(req->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 
 	// if we are processing a reply to a non-slow peer then decrease the count of
 	// non-slow outstanding requests
@@ -4387,11 +4228,7 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 		}
 		return;
 	}
-	
-	// a normal response, let the derived class handle it
-#if g_log_dht
-	dht_log("DhtLookupScheduler,normal_reply,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
+
 
 	ImplementationSpecificReplyProcess(userdata, peer_id, message, flags);
 
@@ -4973,7 +4810,6 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 			, format_dht_id(nodeInfo.id.id).c_str());
 
     SockAddr addr = nodeInfo.id.addr;
-//    addr = impl->ipv4ipv6_resolve(addr);
     if(addr.get_port() == INVALID_PORT) {
         error_log("GetPeersDhtProcess::DhtSendRPC fails, unresolved peer addr");
         return;
@@ -5140,7 +4976,6 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	smart_buffer sb(buf, bufLen);
 
     SockAddr addr = nodeInfo.id.addr;
-//    addr = impl->ipv4ipv6_resolve(addr);
     if(addr.get_port() == INVALID_PORT) {
         error_log("AnnounceDhtProcess::DhtSendRPC fails, unresolved peer addr");
         return;
@@ -6706,7 +6541,7 @@ void DhtImpl::punch(HolePunch type, int punch_id,
 
 	for(const auto &destination : destinations) {
 
-		SockAddr dest = destination; // ipv4ipv6_resolve(destination);
+		SockAddr dest = destination;
 		if (dest.get_port() == INVALID_PORT) {
 			error_log("punch fails, unresolved peer addr");
 			return;
