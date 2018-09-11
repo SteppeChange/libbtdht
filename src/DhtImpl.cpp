@@ -179,7 +179,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x1;
-	_dht_utversion[3] = 0x5;
+	_dht_utversion[3] = 0x6;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
