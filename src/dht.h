@@ -392,7 +392,7 @@ inline sockaddr_storage ipv4ipv6_resolve(sockaddr_storage const& peer, int famil
 		hints.ai_family = PF_UNSPEC; // family ?
 		hints.ai_socktype = SOCK_DGRAM;
 		hints.ai_protocol = IPPROTO_UDP;
-		hints.ai_flags = AI_PASSIVE; //  & AI_NUMERICHOST; // AI_NUMERICHOST flag suppresses any potentially lengthy network host address lookups.
+		hints.ai_flags = AI_PASSIVE & AI_NUMERICHOST; // AI_NUMERICHOST flag suppresses any potentially lengthy network host address lookups.
 		int error = getaddrinfo(addr_name.c_str(), std::to_string(port).c_str(), &hints, &res0);
 		if (error) {
 			return peer;
