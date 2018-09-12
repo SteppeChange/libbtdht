@@ -921,7 +921,7 @@ DhtRequest *DhtImpl::SendFindNode(const DhtPeerID &unresolved_peer_id) {
     
 	DhtRequest *req = AllocateRequest(peer_id);
 
-    trace_log(">>> find_node refersh (%d), to_addr:%s, to_id:%s, looking_for:%s", req->tid
+    trace_log(">>> find_node refresh (%d), to_addr:%s, to_id:%s, looking_for:%s", req->tid
               , print_sockaddr(peer_id.addr).c_str(), format_dht_id(peer_id.id).c_str(), hexify(target_bytes).c_str());
 
 
