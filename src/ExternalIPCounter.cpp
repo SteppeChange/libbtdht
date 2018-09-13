@@ -26,195 +26,99 @@ std::string print_sockaddr(SockAddr const& addr);
 
 
 ExternalIPCounter::ExternalIPCounter(SHACallback* sha, IPEvents* events)
-	: _winnerV4(_map.end()), _winnerV6(_map.end()), _HeatStarted(0)
-	, _TotalVotes(0)
-	, _last_votes4(0)
-	, _last_votes6(0)
-	, _ip_change_observer(NULL)
-	, _sha_callback(sha)
-	, _events(events)
-{}
-
-void ExternalIPCounter::Rotate()
+	:_events(events)
 {
-	if (!IsExpired()) return;
-
-	if (_winnerV4 != _map.end()) {
-		byte ip_winner[4];
-		byte last_winner[4];
-		_winnerV4->first.compact(ip_winner, false);
-		_last_winner4.compact(last_winner, false);
-		// don't invoke the observer if last_votes is zero, that means this is the first
-		// IP we've seen
-		if(_last_votes4 && memcmp(ip_winner, last_winner, 4) && _ip_change_observer){
-			_ip_change_observer->on_ip_change(_winnerV4->first);
-		}
-		_last_winner4 = _winnerV4->first;
-		_last_votes4 = _winnerV4->second;
-	}
-	if (_winnerV6 != _map.end()) {
-		byte ip_winner[16];
-		byte last_winner[16];
-		_winnerV6->first.compact(ip_winner, false);
-		_last_winner6.compact(last_winner, false);
-		if(_last_votes6 && memcmp(ip_winner, last_winner, 16) && _ip_change_observer){
-			_ip_change_observer->on_ip_change(_winnerV6->first);
-		}
-		_last_winner6 = _winnerV6->first;
-		_last_votes6 = _winnerV6->second;
-	}
-
-	_map.clear();
-	_winnerV6 = _map.end();
-	_winnerV4 = _map.end();
-	_HeatStarted = time(NULL);
-	_TotalVotes = 0;
-	_voterFilter.clear();
-}
-
-void ExternalIPCounter::NetworkChanged()
-{
-	// Force a rotation after the next vote
-	_TotalVotes = EXTERNAL_IP_HEAT_MAX_VOTES;
-	// Our IP likely changed so give minimal weight to previous votes
-	for (auto& m : _map)
-		m.second = 1;
-	// peers who already voted may have legitmatly changed their vote
-	// so don't filter them
-	_voterFilter.clear();
+	Reset();
 }
 
 void ExternalIPCounter::Reset()
 {
-       _TotalVotes = 0;
-       _last_votes4 = _last_votes6 = 0;
        _map.clear();
-       _winnerV6 = _map.end();
+       _voters.clear();
        _winnerV4 = _map.end();
-       _HeatStarted = time(NULL);
-       _voterFilter.clear();
-       memset(&_last_winner4, 0, sizeof(SockAddr));
-       memset(&_last_winner6, 0, sizeof(SockAddr));
 }
 
-void ExternalIPCounter::CountIP( const SockAddr& addr, int weight ) {
+bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
+
 	// ignore anyone who claims our external IP is
 	// INADDR_ANY or on a local network
 	if(addr.is_addr_any() || is_ip_local(addr))
-		return;
+		return false;
 
-	// timestamp the first time we get a vote
-	if(! _HeatStarted)
-		_HeatStarted = time(NULL);
+	// all public internet addresses are v4
+	if(addr.isv6())
+		return false;
 
-	// attempt to insert this vote
-	std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, weight));
+	voters_map::const_iterator vit = _voters.find(voter);
+	if(vit==_voters.end()) {
+		_voters[voter] = addr;
 
-	size_t ex_ips = _map.size();
-	if(ex_ips==2) // 2 different ip's
-	{
-		if(ex_ips==3)
+		// _HeatStarted = time(NULL);
+
+		// attempt to insert this vote
+		std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, 1));
+
+		// check Symmetric NAT
+		size_t ex_ips = _map.size();
+		if(ex_ips>1) // 2 different ip's
+		{
 			warnings_log("May be symmetric NAT detected\n");
-		for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
-			debug_log("Unique external IP: %s\n", print_sockaddr(it->first).c_str());
+			for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
+				debug_log("Unique external IP: %s\n", print_sockaddr(it->first).c_str());
+			}
+			if(ex_ips==4 && _events)
+				_events->symmetric_NAT_detected();
+		};
+
+		// increase voter's counter
+		if (!inserted.second)
+			inserted.first->second += 1;
+
+		if(_winnerV4 == _map.end()) {
+			_winnerV4 = inserted.first;
+			return true;
 		}
-		if(_events)
-			_events->symmetric_NAT_detected();
-	};
 
-	// if the new IP wasn't inserted, it's already in there
-	// increase the vote counter
-	if (!inserted.second)
-		inserted.first->second += weight;
-
-	// if the IP vout count exceeds the current leader, replace it
-	if(addr.isv4() && (_winnerV4 == _map.end() || inserted.first->second > _winnerV4->second))
-		_winnerV4 = inserted.first;
-	if(addr.isv6() && (_winnerV6 == _map.end() || inserted.first->second > _winnerV6->second))
-		_winnerV6 = inserted.first;
-	_TotalVotes += weight;
-
-	Rotate();
-}
-
-void ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, int weight ) {
-	// Don't let local peers vote on our IP address
-
-	if (is_ip_local(voter))
-		return;
-
-	// Accept an empty voter address.
-	if ( ! voter.is_addr_any() ) {
-		// TODO: we should support IPv6 voters as well
-		// If voter is in bloom filter, return
-		uint32 vaddr = voter.get_addr4();
-		sha1_hash key = _sha_callback((const byte*)&vaddr, 4);
-
-		if (_voterFilter.test(key))
-			return;
-		_voterFilter.add(key);
-	}
-	CountIP(addr, weight);
-}
-
-bool ExternalIPCounter::GetIP(SockAddr &addr) const {
-
-	if (_last_votes4 >= _last_votes6 && _last_votes4 > 0) {
-		addr = _last_winner4;
-		return true;
-	} else if (_last_votes6 > _last_votes4 && _last_votes6 > 0) {
-		addr = _last_winner6;
-		return true;
-	}
-
-	if (_winnerV4 != _map.end()) {
-		if(_winnerV6 != _map.end() && _winnerV6->second > _winnerV4->second) {
-			addr = _winnerV6->first;
-		} else {
-			addr = _winnerV4->first;
+		// if the IP vout count exceeds the current leader, replace it
+		if(inserted.first->second > _winnerV4->second) {
+			warnings_log("Detected new ip %s from voter %s voting: %d %d\n",
+					print_sockaddr(addr).c_str(),
+					print_sockaddr(voter).c_str(),
+					_winnerV4->second, inserted.first->second);
+			IpChanged(addr, voter);
+			return true;
 		}
-		return true;
+
+		return false;
 	}
-	if (_winnerV6 != _map.end()) {
-		addr = _winnerV6->first;
-		return true;
+	else
+	{
+		if(vit->second == addr)
+			// already voted with te same address
+			return false;
+		else {
+			// new IP detected. Old voter reports new my ip.
+			warnings_log("New IP was detected. Old voter reports new ip, new ip %s from voter %s\n",
+						 print_sockaddr(addr).c_str(),
+						 print_sockaddr(voter).c_str());
+			IpChanged(addr, voter);
+			return true;
+		}
 	}
+
 	return false;
 }
 
-bool ExternalIPCounter::GetIPv4(SockAddr &addr) const {
-	if (!_last_winner4.is_addr_any()) {
-		addr = _last_winner4;
-		return true;
-	}
-
-	if(_winnerV4 != _map.end()) {
-		addr = _winnerV4->first;
-		return true;
-	}
-	return false;
+void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter)
+{
+	Reset();
+	CountIP(addr, voter);
 }
 
-bool ExternalIPCounter::GetIPv6(SockAddr &addr) const {
-	if (!_last_winner6.is_addr_any()) {
-		addr = _last_winner6;
-		return true;
-	}
-
-	if(_winnerV6 != _map.end()) {
-		addr = _winnerV6->first;
-		return true;
-	}
-	return false;
-}
-
-// both thresholds must be crossed (time and count)
-bool ExternalIPCounter::IsExpired() const {
-	if(!_HeatStarted) return false;
-	if(_TotalVotes > EXTERNAL_IP_HEAT_MAX_VOTES ||
-		(_HeatStarted + EXTERNAL_IP_HEAT_DURATION) < time(NULL))
-		return true;
-	return false;
-
+SockAddr ExternalIPCounter::GetIP() const {
+	if(_winnerV4 == _map.end())
+		return SockAddr();
+	else
+		return _winnerV4->first;
 }
 

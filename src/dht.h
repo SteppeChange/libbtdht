@@ -295,6 +295,8 @@ public:
 		DHT_ORIGIN_COUNT
 	};
 
+	virtual sockaddr_storage get_public_ip() const = 0;
+
 	virtual void SetVersion(char const* client, int major, int minor) = 0;
 	virtual void SetRate(int bytes_per_second) = 0;
 

@@ -297,9 +297,6 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 	// Load the DHT state
 	LoadState(user_data);
 
-	// initialize _lastLeadingAddress
-	if (_ip_counter) _ip_counter->GetIPv4(_lastLeadingAddress);
-
 }
 
 /**
@@ -390,13 +387,14 @@ void DhtImpl::SetId(DhtID id) {
 
 void DhtImpl::GenerateId()
 {
-	SockAddr externIp;
+	SockAddr externIp = _ip_counter->GetIP();;
 	byte id_bytes[DHT_ID_SIZE];
 
-	if(_ip_counter && _ip_counter->GetIPv4(externIp)){
+	if(!externIp.is_addr_any())
+	{
 		DhtCalculateHardenedID(externIp, id_bytes);
 
-		debug_log("Generating a hardened node ID: \"%s\"", hexify(id_bytes).c_str());
+		debug_log("Generating a hardened node ID: \"%s\" for ip %s", hexify(id_bytes).c_str(), print_sockaddr(externIp).c_str());
 	} else {
 		uint32 *pTemp = (uint32 *) id_bytes;
 		// Generate a random ID
@@ -2736,7 +2734,7 @@ bool DhtImpl::BootSuccessСheckup() {
 			_dht_events->bootstrap_state_changed(
 					EBootSuccess,
 					_my_id.sha1(),
-					_lastLeadingAddress.get_sockaddr_storage(),
+					_ip_counter->GetIP().get_sockaddr_storage(),
 					_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 		return true;
@@ -2770,7 +2768,7 @@ void DhtImpl::ProcessCallback()
 		if(_dht_events)
 			_dht_events->bootstrap_state_changed(EBootFailed,
 												 _my_id.sha1(),
-												 _lastLeadingAddress.get_sockaddr_storage(),
+												 _ip_counter->GetIP().get_sockaddr_storage(),
 												 _udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	}
@@ -3304,7 +3302,7 @@ void DhtImpl::Restart() {
 	if(_dht_events)
 		_dht_events->bootstrap_state_changed(EBootStart,
 											 _my_id.sha1(),
-											 _lastLeadingAddress.get_sockaddr_storage(),
+											 _ip_counter->GetIP().get_sockaddr_storage(),
 											 _udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	bool old_g_dht_enabled = _dht_enabled;
@@ -3490,8 +3488,7 @@ void DhtImpl::SaveState(void* user_data)
 	// Save Public IP
 	if (_ip_counter) {
 		byte buf[256];
-		SockAddr addr;
-		_ip_counter->GetIPv4(addr);
+		SockAddr addr = _ip_counter->GetIP();
 		size_t iplen = addr.compact(buf, true);
 		BencEntityMem beMemIP(buf, iplen);
 		dict->Insert("ip", beMemIP);
@@ -3590,10 +3587,8 @@ void DhtImpl::LoadState(void* user_data)
 			// one vote for this IP, just to seed it with something
 			SockAddr addr;
 			if (addr.from_compact(ip, ip_len)) {
-				_ip_counter->CountIP(addr);
+				_ip_counter->CountIP(addr, _udp_socket_mgr->GetBindAddr());
 				
-				SockAddr tmp;
-				_ip_counter->GetIPv4(tmp);
 				info_log("Loaded possible external IP \"%s\""
 					, print_sockaddr(addr).c_str());
 			}
@@ -3627,6 +3622,11 @@ int DhtImpl::GetNumPutItems()
 	return _immutablePutStore.pair_list.size();
 }
 
+sockaddr_storage DhtImpl::get_public_ip() const
+{
+	return _ip_counter->GetIP().get_sockaddr_storage();
+}
+
 // addr - new ip reported in responce
 // voter - ip who responce on request
 
@@ -3634,20 +3634,16 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 {
 	if (_ip_counter == NULL) return;
 
-	SockAddr tempWinner;
-	_ip_counter->CountIP(addr, voter);
-
-	if (_ip_counter->GetIPv4(tempWinner) && !tempWinner.ip_eq(_lastLeadingAddress)) {
+	SockAddr lastWinner = _ip_counter->GetIP();
+	if(_ip_counter->CountIP(addr, voter))
+	{
 		trace_log("External IP changed from: \"%s\" to \"%s\""
-			, print_sockaddr(_lastLeadingAddress).c_str()
-			, print_sockaddr(tempWinner).c_str());
-
-		_lastLeadingAddress = tempWinner;
+				, print_sockaddr(lastWinner).c_str()
+				, print_sockaddr(_ip_counter->GetIP()).c_str());
 
 		_save_callback(_init_user_data,0,0);
 
 		Restart();
-
 	}
 }
 

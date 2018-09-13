@@ -35,47 +35,25 @@ class IPEvents {
 		virtual void symmetric_NAT_detected() = 0;
 };
 
-struct ip_change_observer {
-	virtual ~ip_change_observer() {}
-	virtual void on_ip_change(SockAddr const & new_ip) = 0;
-};
 
 class ExternalIPCounter
 {
 public:
 	ExternalIPCounter(SHACallback* sha, IPEvents* events);
-	void set_ip_change_observer(ip_change_observer * ip_observer){_ip_change_observer = ip_observer;}
-	void CountIP( const SockAddr& addr, const SockAddr& voter, int weight = 1);
-	void CountIP( const SockAddr& addr, int weight = 1 );
-	bool GetIP( SockAddr& addr ) const;
-	bool GetIPv4( SockAddr& addr ) const;
-	bool GetIPv6( SockAddr& addr ) const;
-
-	void SetHeatStarted(time_t t) { _HeatStarted = t; }
-
-	void NetworkChanged();
-
+	// return tru if addr cahnged
+	bool CountIP( const SockAddr& addr, const SockAddr& voter);
+	SockAddr GetIP() const;
 	void Reset();
+	void IpChanged(const SockAddr& addr, const SockAddr& voter);
 
 private:
-	void Rotate();
-	bool IsExpired() const;
+	typedef std::map<SockAddr, int> candidate_map; // <my ip, voters count>
+	typedef std::map<SockAddr, SockAddr> voters_map; // <voter ip, mt ip>
 
-	typedef std::map<SockAddr, int> candidate_map;
-
+	voters_map _voters;
 	candidate_map _map;
 	candidate_map::const_iterator _winnerV4;
-	candidate_map::const_iterator _winnerV6;
-	bloom_filter _voterFilter;
-	time_t _HeatStarted;
-	int _TotalVotes;
 
-	SockAddr _last_winner4;
-	SockAddr _last_winner6;
-	int _last_votes4;
-	int _last_votes6;
-	ip_change_observer * _ip_change_observer;
-	SHACallback* _sha_callback;
 	IPEvents* _events;
 };
 

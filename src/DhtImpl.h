@@ -1923,6 +1923,7 @@ public:
 
 	int GetNumPutItems();
 	void CountExternalIPReport( const SockAddr& addr, const SockAddr& voter );
+	sockaddr_storage get_public_ip() const override;
 	bool IsBootstrap(const SockAddr& addr);
 
 	char const* name() const { return "DhtImpl"; }
@@ -2099,7 +2100,6 @@ public:
 	UDPSocketInterface *_udp_socket_mgr;
 	UDPSocketInterface *_udp6_socket_mgr;
 	DHTEvents* _dht_events;
-	SockAddr _lastLeadingAddress;	// For tracking external voting of our ip
 	std::set<SockAddr> _bootstrap_routers;
 
 	// this is used temporarily when assembling the node list. If we need to
