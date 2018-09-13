@@ -1300,10 +1300,6 @@ void DhtImpl::AddVoteToStore(smart_buffer& sb, DhtID& target
 	sb("1:vli%dei%dei%dei%dei%dee", vc->num_votes[0], vc->num_votes[1],
 			vc->num_votes[2], vc->num_votes[3], vc->num_votes[4]);
 }
-#ifdef _DEBUG_MEM_LEAK
-//redefine this...undefed above to handle new (ptr) Type
-#define new new(__FILE__,__LINE__)
-#endif //_DEBUG_MEM_LEAK
 
 void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer)
 {
@@ -1322,6 +1318,7 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 		sc = &(*_peer_store.insert(it, StoredContainer()));
 		sc->info_hash = info_hash;
 		sc->file_name = (char*)malloc(MAX_FILE_NAME_LENGTH);
+		info_log("Storage: Hash %s is added to the storage",  format_dht_id(sc->info_hash).c_str());
 	}
 
 	// Check if the peer is already in the peer list.
@@ -1340,6 +1337,7 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 	sp.time = time(NULL);
 	sp.id = announsed_peer;
 	sc->peers.push_back(sp);
+	info_log("Storage: Hash %s announcer %s is added",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
 	_peers_tracked++;
 }
 
@@ -1358,6 +1356,7 @@ void DhtImpl::ExpirePeersFromStore(time_t expire_before)
 		}
 		if (sp.size() == 0) {
 			free(it->file_name);
+			info_log("Storage: Hash %s expired, removed from storage",  format_dht_id(it->info_hash).c_str());
 			it = _peer_store.erase(it);
 		} else {
 			++it;
@@ -1546,16 +1545,21 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	CopyBytesToDhtID(info_hash_id, message.infoHash.b);
 
 	// read the token
+#ifndef TEST_ANNOUNCE
 	if (!message.token.len) {
 		error_log("Bad write token");
 		Account(DHT_INVALID_PQ_BAD_WRITE_TOKEN, packetSize);
 		return false;
 	}
+#endif
 
-	debug_log("<<< announce_peer: id='%s', info_hash='%s', token='%s', host='%A'",
-              format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(), hexify(message.token.b).c_str(), &peerID.addr);
+	debug_log("<<< announce_peer: from_id='%s', info_hash='%s', token='%s', from_ip='%s'",
+              format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(),
+              hexify(message.token.b).c_str(), print_sockaddr(peerID.addr).c_str());
 
 	// validate the token
+
+#ifndef TEST_ANNOUNCE
 	if (!ValidateWriteToken(peerID, message.token.b)) {
 		warnings_log("announce rejected, invalid write token id='%s', info_hash='%s', token='%s', host='%A'",
 				  format_dht_id(peerID.id).c_str(),
@@ -1565,6 +1569,7 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 		Account(DHT_INVALID_PQ_INVALID_TOKEN, packetSize);
 		return false;
 	}
+#endif
 
 	AddPeerToStore(info_hash_id, peerID.id);
 
@@ -2614,7 +2619,7 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 	void *ctx,
 	int flags)
 {
-	debug_log("DoAnnounce: %s", format_dht_id(target).c_str());
+	debug_log("DoAnnounce: hash:%s owner(me):%s", format_dht_id(target).c_str(), format_dht_id(_my_id).c_str());
 
 	// announcing is a two stage process,
 	//  1) perform a get_peers dht search to build a list of nearist nodes
@@ -3172,7 +3177,11 @@ void DhtImpl::Tick()
 	if (++_1min_counter == 60 * 1) {
 		_1min_counter = 0;
 		RandomizeWriteToken();
+#ifdef TEST_ANNOUNCE
+		ExpirePeersFromStore(time(NULL) - 30);
+#else
 		ExpirePeersFromStore(time(NULL) - 2 * 60);
+#endif
 		_immutablePutStore.UpdateUsage(time(NULL));
 		_mutablePutStore.UpdateUsage(time(NULL));
 
@@ -3716,7 +3725,10 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	{
 		sha1_hash sha1 = id.id.sha1();
 		if (!DhtVerifyHardenedID(id.addr, sha1.value)) {
-			debug_log("Update rejected for: %s (untrusted dht id)", format_dht_id(id.id).c_str());
+			debug_log("Update neighbour was rejected (untrusted dht id), id:%s ip:%s source:%s",
+					format_dht_id(id.id).c_str(),
+					print_sockaddr(id.addr).c_str(),
+					seen ? "incoming packet" : "another node report");
 			return NULL;
 		}
 	}
@@ -4520,13 +4532,31 @@ void DhtBroadcastScheduler::Schedule()
 		switch(processManager[index].queried){
 			case QUERIED_NO:
 			{
-				DhtFindNodeEntry& nodeInfo = processManager[index];
-				if (!aborted && !Filter(nodeInfo)) {
-					nodeInfo.queried = QUERIED_YES;
-					DhtRequest *req = impl->AllocateRequest(nodeInfo.id);
-					DhtSendRPC(nodeInfo, req->tid);
+
+#ifdef TEST_ANNOUNCE
+				/// ***** send to self
+				if(outstanding==0)
+				{
+					DhtFindNodeEntry myNodeInfo;
+					myNodeInfo.id.id = impl->_my_id;
+					myNodeInfo.id.addr = impl->_udp_socket_mgr->GetBindAddr();
+					myNodeInfo.queried = QUERIED_YES;
+					DhtRequest *req = impl->AllocateRequest(myNodeInfo.id);
+					DhtSendRPC(myNodeInfo, req->tid);
 					req->_pListener = new DhtRequestListener<DhtProcessBase>(this, &DhtProcessBase::OnReply);
 					outstanding++;
+				}
+#endif
+
+				{
+					DhtFindNodeEntry &nodeInfo = processManager[index];
+					if (!aborted && !Filter(nodeInfo)) {
+						nodeInfo.queried = QUERIED_YES;
+						DhtRequest *req = impl->AllocateRequest(nodeInfo.id);
+						DhtSendRPC(nodeInfo, req->tid);
+						req->_pListener = new DhtRequestListener<DhtProcessBase>(this, &DhtProcessBase::OnReply);
+						outstanding++;
+					}
 				}
 				break;
 			}
@@ -4563,10 +4593,6 @@ Let slow peers continue until they either respond or timeout.
 void DhtBroadcastScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
-#if g_log_dht
-	assert(req->origin >= 0);
-	assert(req->origin < sizeof(g_dht_peertype_count)/sizeof(g_dht_peertype_count[0]));
-#endif
 
 	if(flags & NORMAL_RESPONSE){
 		// a normal response, let the derived class handle it
@@ -4916,9 +4942,6 @@ AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 
 void AnnounceDhtProcess::Start()
 {
-#if g_log_dht
-	dht_log("AnnounceDhtProcess,start_announce,id,%d,time,%d\n", target.id[0], get_microseconds());
-#endif
 	processManager.SetAllQueriedStatus(QUERIED_NO);
 	DhtProcessBase::Start();
 }
@@ -4961,7 +4984,7 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	trace_log(">>> announce_peer (%d), to_addr:%s, to_id:%s"
 		    , transactionID
 			, print_sockaddr(nodeInfo.id.addr).c_str()
-			, format_dht_id(nodeInfo.id.id).c_str());
+			, format_dht_id(nodeInfo.id.id).c_str() );
 
 	// convert the token
 	ArgumenterValueInfo& argBuf = announceArgumenterPtr->GetArgumenterValueInfo(a_token);
@@ -4996,12 +5019,6 @@ void AnnounceDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 		error_log("DhtSendRPC blob exceeds maximum size.");
 		return;
 	}
-
-#ifdef _DEBUG_DHT
-	if (impl->_lookup_log)
-		fprintf(impl->_lookup_log, "[%u] [%u] [%s]: ANNOUNCE -> %s\n"
-			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(addr).c_str());
-#endif
     
 
 	impl->SendTo(addr, buf, sb.length());
