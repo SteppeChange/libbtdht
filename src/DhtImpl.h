@@ -1820,10 +1820,6 @@ public:
 
 	uint _bootstrap_start;
 
-	#ifdef _DEBUG_DHT_INSTRUMENT
-	FILE* _instrument_log;
-#endif
-
 private:
 	void Initialize(void* user_data, UDPSocketInterface *_udp_socket_mgr, UDPSocketInterface *_udp6_socket_mgr ) override;
 

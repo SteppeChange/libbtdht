@@ -179,7 +179,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x1;
-	_dht_utversion[3] = 0x6;
+	_dht_utversion[3] = 0x7;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -1197,7 +1197,7 @@ int DhtImpl::BuildFindNodesPacket(smart_buffer &sb, DhtID &target_id, int size
 	sb("5:nodes%d:", n * node_size);
 	for(uint i=0; i!=n; i++) {
 		sb(list[i]->id)(list[i]->addr);
-        debug_log("add to responce: id=:%s, ip:%s ", format_dht_id(list[i]->id).c_str(), print_sockaddr(list[i]->addr).c_str());
+        //debug_log("add to responce: id=:%s, ip:%s ", format_dht_id(list[i]->id).c_str(), print_sockaddr(list[i]->addr).c_str());
 	}
 	assert(sb.length() >= 0);
 	return n;
@@ -1712,8 +1712,7 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 	assert(size <= mtu);
 
 	uint n = BuildFindNodesPacket(sb, target_id, mtu - size, peerID.addr);
-	debug_log("Incoming FIND_NODE request, looking for: %s. Found %d peers."
-		, format_dht_id(target_id).c_str(), n);
+//	debug_log("Incoming FIND_NODE request, looking for: %s. Found %d peers.", format_dht_id(target_id).c_str(), n);
 
 	sb("e");
 	put_transaction_id(sb, message.transactionID);
@@ -2875,7 +2874,7 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 			// Don't add myself to my internal list of peers.
 			if (peer.id != _my_id && peer.addr.get_port() != 0) {
 
-                debug_log("insert/update (%d) candidate %s %s",
+                debug_log("in/up (fr) (%d) %s %s",
                           Read32(message.transactionID.b), format_dht_id(peer.id).c_str(), print_sockaddr(peer.addr).c_str());
 
 				// Update the internal tables with this peer's information
@@ -4223,7 +4222,7 @@ void DhtLookupScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
 		impl->UpdateError(peer_id, req->tid, flags & ICMP_ERROR);
 
-		debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
+		debug_log("request TIMEOUT/ICMP tid=%d", req->tid);
 
 		// put another request in flight since this peer is dead from ICMP
 		// (a slow peer that times-out already had a replacement query launched)
@@ -4358,7 +4357,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		uint num_nodes = nodes.len / node_size;
 		if (nodes.b && nodes.len % node_size == 0) {
 			// Insert all peers into my internal list.
-			debug_log("[%u] lookup response has %d nodes", process_id(), num_nodes);
+			//debug_log("[%u] lookup response has %d nodes", process_id(), num_nodes);
 
 			while (num_nodes != 0) {
 				DhtPeerID peer;
@@ -4377,7 +4376,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 					&& peer.addr.get_port() != 0
 					&& !impl->IsBootstrap(peer.addr)) {
 
-                    debug_log("insert/update (%d) candidate %s %s",
+                    debug_log("in/up (ff) (%d) %s %s",
                               Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 
 					impl->Update(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
@@ -4613,7 +4612,7 @@ void DhtBroadcastScheduler::OnReply(void*& userdata, const DhtPeerID &peer_id
 	else if(flags & ANY_ERROR){  // if ICMP or timeout error
 		DhtFindNodeEntry *dfnh = processManager.FindQueriedPeer(peer_id);
 		if (dfnh) dfnh->queried = QUERIED_ERROR;
-        debug_log("[%u] request TIMEOUT/ICMP tid=%d", process_id(), req->tid);
+        debug_log("request TIMEOUT/ICMP tid=%d", req->tid);
 		impl->UpdateError(peer_id, req->tid, flags & ICMP_ERROR);
 		outstanding--;
 		Schedule(); // put another request in flight since this peer is slow to reply (and may be dead)
@@ -6134,12 +6133,12 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->rtt = candidateNode.rtt;
 
 		memset(&peer->client, 0, sizeof(peer->client));
-		debug_log("Add node %s %s", format_dht_id(peer->id.id).c_str(), print_sockaddr(peer->id.addr).c_str());
+		//debug_log("Add node %s %s", format_dht_id(peer->id.id).c_str(), print_sockaddr(peer->id.addr).c_str());
 
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
 
-		debug_log("Routing table num_nodes=%d", pDhtImpl->_dht_peers_count);
+		//debug_log("Routing table num_nodes=%d", pDhtImpl->_dht_peers_count);
 
 		if (pout) *pout = peer;
 
