@@ -2297,7 +2297,7 @@ public:
 	bool ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr) override;
 
 	// check boot sucess and call success callback
-	bool BootSuccessCheckup();
+	bool is_boot_success();
 
 	// Save all non-failed peers.
 	// Save my peer id.
