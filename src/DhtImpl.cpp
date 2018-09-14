@@ -1711,7 +1711,7 @@ bool DhtImpl::ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 	const uint16 mtu = GetUDP_MTU(peerID.addr);
 	assert(size <= mtu);
 
-	uint n = BuildFindNodesPacket(sb, target_id, mtu - size, peerID.addr);
+	/*uint n =*/ BuildFindNodesPacket(sb, target_id, mtu - size, peerID.addr);
 //	debug_log("Incoming FIND_NODE request, looking for: %s. Found %d peers.", format_dht_id(target_id).c_str(), n);
 
 	sb("e");
