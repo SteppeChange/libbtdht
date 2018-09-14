@@ -2720,7 +2720,7 @@ done:
 // That was due to the timeout error happened in the first DHT nodes lookup, which means we only
 // connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
 // nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
-bool DhtImpl::BootSuccessСheckup() {
+bool DhtImpl::BootSuccessCheckup() {
 
 	if (_dht_bootstrap == DhtImpl::bootstrap_complete)
 		return true;
@@ -2750,7 +2750,7 @@ void DhtImpl::ProcessCallback()
 	// That was due to the timeout error happened in the first DHT nodes lookup, which means we only
 	// connected to the inital DHT routers but none of them replied in 4 seconds. If we failed to get enough
 	// nodes in the first attempt, we will redo the bootstrapping again in 15 seconds.
-	if (BootSuccessСheckup()) {
+	if (BootSuccessCheckup()) {
 
 		_dht_bootstrap = bootstrap_complete;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
@@ -6117,7 +6117,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
         
 		if (pout) *pout = p;
 
-		pDhtImpl->BootSuccessСheckup();
+		pDhtImpl->BootSuccessCheckup();
 		return true;
 	}
 
@@ -6142,7 +6142,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 
 		if (pout) *pout = peer;
 
-		pDhtImpl->BootSuccessСheckup();
+		pDhtImpl->BootSuccessCheckup();
 
 		return true;
 	}

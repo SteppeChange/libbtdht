@@ -2297,12 +2297,11 @@ public:
 	bool ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr) override;
 
 	// check boot sucess and call success callback
-	bool BootSuccessСheckup();
+	bool BootSuccessCheckup();
 
 	// Save all non-failed peers.
 	// Save my peer id.
 	// Don't save announced stuff.
-
 	struct PackedDhtPeer {
 		byte id[DHT_ID_SIZE];
 		byte ip[4];
