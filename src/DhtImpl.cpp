@@ -3663,9 +3663,10 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 		return NULL;
 
 	// never add ourself to the routing table
-	if (id.id == _my_id) {
+	if (id.id == _my_id)
 		return NULL;
-	}
+	if(id.addr == _ip_counter->GetIP())
+		return NULL;
 
 	// Don't allow bootstrap servers into the routing table
 	// if (IsBootstrap(id.addr))
