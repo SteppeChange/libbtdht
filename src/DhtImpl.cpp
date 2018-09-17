@@ -264,6 +264,7 @@ bool DhtImpl::handleReadEvent(UDPSocketInterface *socket, byte *buffer
 	if (len > 10 && buffer[0] == 'd' && buffer[len-1] == 'e' && buffer[2] == ':') {
 		return ProcessIncoming(buffer, len, addr);
 	}
+	error_log("Not Kademlia packet\n");
 	return false;
 }
 
@@ -2179,13 +2180,14 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSize) {
 
 	if(!message.id) {
-		Account(DHT_INVALID_PQ_BAD_ID_FIELD, packetSize);
+		error_log("bad/missing ID field");
 		return false; // bad/missing ID field
 	}
 
 	// Out of DHT quota.. No space to send a reply.
 	if (_dht_quota < 0 && _dht_rate) {
 		// we don't really know it was valid, but otherwise it's marked as invalid
+		error_log("quota failed");
 		Account(DHT_BW_IN_REQ, packetSize);
 		Account(DHT_BW_IN_NO_QUOTA, packetSize);
 		return false;
@@ -2358,12 +2360,12 @@ bool DhtImpl::InterpretMessage(DHTMessage &message, const SockAddr& addr, int pk
 	// our transaction id length is 4, but we should be able to handle
 	// most requests from the wild that have a different spec
 	if (message.transactionID.len > 16) {
-		Account(DHT_INVALID_PR_BAD_TID_LENGTH, pkt_size);
+		error_log("Invalid transaction id len");
 		return false;
 	}
 
 	if (!message.transactionID.b) {
-		Account(DHT_INVALID_PI_BAD_TID, pkt_size);
+		error_log("Invalid transaction id");
 		return false; // bad/missing tid
 	}
 
@@ -2384,12 +2386,12 @@ bool DhtImpl::InterpretMessage(DHTMessage &message, const SockAddr& addr, int pk
 
 			// Handle a query from a peer
 			if(message.dhtCommand == DHT_QUERY_UNDEFINED){
-				Account(DHT_INVALID_PI_Q_BAD_COMMAND, pkt_size);
+				error_log("Undefined DHT query");
 				return false; // bad/missing command.
 			}
 
 			if(!message.ValidArguments()){
-				Account(DHT_INVALID_PI_Q_BAD_ARGUMENT, pkt_size);
+				error_log("Invalid/bad/missing DHT query argument");
 				return false; // bad/missing argument.
 			}
 			return ProcessQuery(peerID, message, pkt_size);
@@ -2734,6 +2736,12 @@ bool DhtImpl::is_boot_success() {
 
 		return true;
 	}
+
+	if(_dht_peers_count < BOOT_COMPLETE)
+		warnings_log("boot: not enough neighbors, has %d but requred %d  ", _dht_peers_count, BOOT_COMPLETE);
+
+	if(_dht_request_response < 2)
+		warnings_log("boot: not enough responces, has %d but requred 2  ", _dht_request_response);
 
 	return false;
 }
@@ -3427,24 +3435,24 @@ bool DhtImpl::ParseKnownPackets(const SockAddr& addr, byte *buf, int pkt_size)
 
 bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 {
-	Account(DHT_BW_IN_TOTAL, len);
-
 
 	if (ParseKnownPackets(addr, buffer, len)) {
-		Account(DHT_BW_IN_KNOWN, len);
-		return true;
+		error_log("cant parse incoming message");
+		return false;
 	}
 
 	DHTMessage message(buffer, len);
 	if(!message.ParseSuccessful()){
-		Account(DHT_INVALID_PI_NO_DICT, len);
+		error_log("cant parse incoming message");
 		return false;
 	}
 
 	if (_dht_enabled)
 		return InterpretMessage(message, addr, len);
+	else
+		error_log("DHT is disabled");
+		return false;
 
-	return true;
 }
 
 // Save all non-failed peers.
