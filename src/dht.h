@@ -301,7 +301,6 @@ public:
 	virtual void SetRate(int bytes_per_second) = 0;
 
 	virtual void SetExternalIPCounter(ExternalIPCounter* ip) = 0;
-	virtual void SetPacketCallback(DhtPacketCallback* cb) = 0;
 	virtual void SetAddNodeResponseCallback(DhtAddNodeResponseCallback* cb) = 0;
 	virtual void SetSHACallback(DhtSHACallback* cb) = 0;
 	virtual void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) = 0;

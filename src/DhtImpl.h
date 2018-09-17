@@ -1898,7 +1898,6 @@ public:
 	void SetSHACallback(DhtSHACallback* cb) override;
 	void SetEd25519VerifyCallback(Ed25519VerifyCallback* cb) override;
 	void SetEd25519SignCallback(Ed25519SignCallback* cb) override;
-	void SetPacketCallback(DhtPacketCallback* cb) override;
 
 	void AddNode(const SockAddr& addr, void* userdata, uint origin) override;
 	void AddBootstrapNode(SockAddr const& addr) override;
@@ -1931,7 +1930,6 @@ public:
 	DhtAddNodeResponseCallback* _add_node_callback;
 	DhtSaveCallback* _save_callback;
 	DhtLoadCallback* _load_callback;
-	DhtPacketCallback* _packet_callback;
 	DhtSHACallback* _sha_callback;
 	Ed25519VerifyCallback* _ed25519_verify_callback;
 	Ed25519SignCallback* _ed25519_sign_callback;

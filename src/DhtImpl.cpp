@@ -146,7 +146,6 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_add_node_callback = NULL;
 	_save_callback = save;
 	_load_callback = load;
-	_packet_callback = NULL;
 	_peers_tracked = 0;
 	_dht_enabled = false;
 	_dht_read_only = false;
@@ -520,14 +519,11 @@ bool DhtImpl::AccountAndSend(const DhtPeerID &peer, const void *data, int len,
 
 void DhtImpl::SendTo(SockAddr const& unresolved_peer, const void *data, uint len)
 {
-	if (!_dht_enabled) return;
+	if (!_dht_enabled)
+		return;
 
 	assert(ValidateEncoding(data, len));
 	Account(DHT_BW_OUT_TOTAL, len);
-
-	if (_packet_callback) {
-		_packet_callback(data, len, false);
-	}
 
 	_dht_quota -= len;
 
@@ -2778,11 +2774,6 @@ void DhtImpl::SetExternalIPCounter(ExternalIPCounter* ip)
 	_ip_counter = ip;
 }
 
-void DhtImpl::SetPacketCallback(DhtPacketCallback* cb)
-{
-	_packet_callback = cb;
-}
-
 void DhtImpl::SetSHACallback(DhtSHACallback* cb)
 {
 	_sha_callback = cb;
@@ -3378,10 +3369,6 @@ bool DhtImpl::handleICMP(UDPSocketInterface *socket, byte *buffer, size_t len, c
 	if (! (len > 10 && buffer[0] == 'd' && buffer[len-1] == 'e' && buffer[2] == ':'))
 		return false;
 
-	if (_packet_callback) {
-		_packet_callback(buffer, len, true);
-	}
-
 	// HMM: stats for ICMP errors?
 	//Account(DHT_BW_IN_TOTAL, len);
 
@@ -3440,10 +3427,6 @@ bool DhtImpl::ParseKnownPackets(const SockAddr& addr, byte *buf, int pkt_size)
 
 bool DhtImpl::ProcessIncoming(byte *buffer, size_t len, const SockAddr& addr)
 {
-	if (_packet_callback) {
-		_packet_callback(buffer, len, true);
-	}
-
 	Account(DHT_BW_IN_TOTAL, len);
 
 
