@@ -210,10 +210,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_sha_callback = NULL;
 
 	debug_log("DhtImpl() [bootstrap=%d]", _dht_bootstrap);
-#ifdef _DEBUG_DHT
-	_bootstrap_log = fopen("dht-bootstrap.log", "w+");
-	_lookup_log = fopen("dht-lookups.log", "w+");
-#endif
+
 }
 
 DhtImpl::~DhtImpl()
@@ -2239,7 +2236,6 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 
 	if (!req) {
 		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
-		Account(DHT_INVALID_PR_UNKNOWN_TID, pkt_size);
 		return false;	// invalid transaction id?
 	}
 	// Verify that the id contained in the message matches with the peer id.
@@ -2247,13 +2243,12 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	{
 
         if(!message.id) {
-			Account(DHT_INVALID_PQ_BAD_ID_FIELD, pkt_size);
+			error_log("Invalid message ID");
 			return false; // bad/missing ID field
 		}
 
         // for bootstrup its wrong, see // _temp_nodes[c].id.id[4] = rand();
 		if (!IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
-			Account(DHT_INVALID_PR_PEER_ID_MISMATCH, pkt_size);
 			warnings_log("Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
                       format_dht_id(req->peer.id).c_str());
@@ -3150,9 +3145,7 @@ void DhtImpl::Tick()
 			delete req->_pListener;
 
 			Account(DHT_BW_IN_TIMEOUT, 0);
-#if g_log_dht
-			dht_log("dlok replytime:-1\n");
-#endif
+
 			delete req;
 		} else {
 			// 1 second passed with no reply.
@@ -3249,34 +3242,6 @@ void DhtImpl::Tick()
 		}
 	}
 
-#if g_log_dht
-	{
-	static DWORD last = get_milliseconds() - 1000;
-	static int64 inrequests = 0;
-	static int64 outrequests = 0;
-	static int64 inrequests2 = 0;
-	static int64 inrequests3 = 0;
-	DhtAccounting *acct = _dht_accounting;
-	int64 t_inrequests = acct[DHT_BW_IN_TOTAL].count;
-	int64 t_outrequests = acct[DHT_BW_OUT_TOTAL].count;
-	int64 t_inrequests2 = acct[DHT_BW_IN_REPL].count;
-	int64 t_inrequests3 = acct[DHT_BW_IN_TIMEOUT].count;
-	DWORD now = get_milliseconds();
-	double t = (now - last) / 1000.0;
-	double oqps = (t_outrequests - outrequests) / t;
-	double iqps = (t_inrequests - inrequests) / t;
-	double iqps2 = (t_inrequests2 - inrequests2) / t;
-	double iqps3 = (t_inrequests3 - inrequests3) / t;
-
-	outrequests = t_outrequests;
-	inrequests = t_inrequests;
-	inrequests2 = t_inrequests2;
-	inrequests3 = t_inrequests3;
-	last = now;
-
-	dht_log("dlok peers:%d qpso:%lf qpsi:%lf repliesps:%lf timeoutps:%lf peersunknown:%d peersinit:%d peersbt:%d peersbt2:%d peersin:%d\n", _dht_peers_count, oqps, iqps, iqps2, iqps3, g_dht_peertype_count[0],g_dht_peertype_count[1],g_dht_peertype_count[2],g_dht_peertype_count[3],g_dht_peertype_count[4]);
-	}
-#endif
 }
 
 
@@ -3703,8 +3668,8 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	}
 
 	// Don't allow bootstrap servers into the routing table
-	if (IsBootstrap(id.addr))
-		return NULL;
+	// if (IsBootstrap(id.addr))
+	//	return NULL;
 
 	// dont add nodes with wrong dhtid
 //	if(!seen) // new node
@@ -4346,9 +4311,13 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		const int node_size = 4 + 2 + 20;
 
 		uint num_nodes = nodes.len / node_size;
+
+		if(!num_nodes)
+			warnings_log("[%u] lookup response has no nodes", process_id());
+
 		if (nodes.b && nodes.len % node_size == 0) {
 			// Insert all peers into my internal list.
-			//debug_log("[%u] lookup response has %d nodes", process_id(), num_nodes);
+
 
 			while (num_nodes != 0) {
 				DhtPeerID peer;
@@ -4626,9 +4595,6 @@ FindNodeDhtProcess::FindNodeDhtProcess(DhtImpl* pDhtImpl
 		, consumerCallbacks,maxOutstanding, flags)
 {
 	DhtIDToBytes(target_bytes, target);
-#if g_log_dht
-	dht_log("FindNodeDhtProcess,instantiated,id,%d,time,%d\n", target.id[0], get_microseconds());
-#endif
 }
 
 void FindNodeDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
