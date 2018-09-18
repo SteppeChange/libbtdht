@@ -42,6 +42,7 @@ public:
 	ExternalIPCounter(SHACallback* sha, IPEvents* events);
 	// return tru if addr cahnged
 	bool CountIP( const SockAddr& addr, const SockAddr& voter);
+	void SetFixedPubliIp(const SockAddr& addr);
 	SockAddr GetIP() const;
 	void Reset();
 	void IpChanged(const SockAddr& addr, const SockAddr& voter);
@@ -53,6 +54,7 @@ private:
 	voters_map _voters;
 	candidate_map _map;
 	candidate_map::const_iterator _winnerV4;
+	bool _fixed;
 
 	IPEvents* _events;
 };

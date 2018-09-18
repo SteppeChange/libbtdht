@@ -140,8 +140,9 @@ std::string format_dht_id(const DhtID &id)
 //--------------------------------------------------------------------------------
 
 DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
-	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip, DHTEvents* dht_events)
+	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip, DHTEvents* dht_events, bool boot_mode)
 {
+	_boot_mode = boot_mode;
 	_ip_counter = eip;
 	_add_node_callback = NULL;
 	_save_callback = save;
@@ -2456,6 +2457,13 @@ void DhtImpl::GenRandomIDInBucket(DhtID &target, DhtBucket *bucket)
 
 void DhtImpl::DoBootstrap()
 {
+
+	if(_boot_mode) {
+		_dht_bootstrap = DhtImpl::bootstrap_complete;
+		return;
+	}
+
+
 	if (_closing) return;
 
 	++_bootstrap_attempts;

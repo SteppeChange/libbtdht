@@ -26,7 +26,8 @@ std::string print_sockaddr(SockAddr const& addr);
 
 
 ExternalIPCounter::ExternalIPCounter(SHACallback* sha, IPEvents* events)
-	:_events(events)
+	: _fixed(false)
+	, _events(events)
 {
 	Reset();
 }
@@ -38,7 +39,18 @@ void ExternalIPCounter::Reset()
        _winnerV4 = _map.end();
 }
 
+void ExternalIPCounter::SetFixedPubliIp(const SockAddr& addr)
+{
+	_fixed = true;
+	std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, 1));
+	_winnerV4 = inserted.first;
+
+}
+
 bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
+
+	if(_fixed)
+		return false;
 
 	// ignore anyone who claims our external IP is
 	// INADDR_ANY or on a local network

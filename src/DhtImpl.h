@@ -1814,6 +1814,7 @@ public:
 		, void* callbacks_user_data = NULL
 		, ExternalIPCounter* eip = NULL
 		, DHTEvents* dht_events = NULL
+		, bool boot_mode = false
 	);
 	~DhtImpl();
 	REFBASE;
@@ -1934,6 +1935,7 @@ public:
 	Ed25519VerifyCallback* _ed25519_verify_callback;
 	Ed25519SignCallback* _ed25519_sign_callback;
 	ExternalIPCounter* _ip_counter;
+	bool _boot_mode;
 
 	// the buckets in the routing table. These buckets are ordered by their
 	// absolute location in the node ID space, _not_ by the distance from

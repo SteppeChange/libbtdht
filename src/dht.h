@@ -354,7 +354,10 @@ public:
 };
 
 smart_ptr<IDht> create_dht(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_socket_mgr
-	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data, ExternalIPCounter* eip = NULL, DHTEvents* dht_events = NULL);
+	, DhtSaveCallback* save, DhtLoadCallback* load, void* callbacks_user_data
+	, ExternalIPCounter* eip = NULL
+	, DHTEvents* dht_events = NULL
+	, bool boot_mode = false);
 
 void set_log_callback(DhtLogCallbacks log);
 
