@@ -3597,13 +3597,9 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 {
 	if (_ip_counter == NULL) return;
 
-	SockAddr lastWinner = _ip_counter->GetIP();
 	if(_ip_counter->CountIP(addr, voter))
 	{
-		trace_log("PublicIP: External IP changed from: \"%s\" to \"%s\""
-				, print_sockaddr(lastWinner).c_str()
-				, print_sockaddr(_ip_counter->GetIP()).c_str());
-
+		 // GetIP() return incorrect result if CountIP return true
 		_save_callback(_init_user_data,0,0);
 
 		Restart();

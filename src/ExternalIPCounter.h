@@ -33,6 +33,7 @@ typedef sha1_hash SHACallback(byte const* buf, int len);
 class IPEvents {
 	public:
 		virtual void symmetric_NAT_detected() = 0;
+		virtual void ip_changed(sockaddr_storage const& old, sockaddr_storage const& new_one) = 0;
 };
 
 

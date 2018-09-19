@@ -90,6 +90,10 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 		if(_winnerV4 == _map.end()) {
 			_winnerV4 = inserted.first;
 			// dont call IpChanged because its first voter
+			warnings_log("PublicIP: First time ip detected new ip %s from voter %s voting: %d %d\n",
+						 print_sockaddr(addr).c_str(),
+						 print_sockaddr(voter).c_str(),
+						 _winnerV4->second, inserted.first->second);
 			return true;
 		}
 
@@ -123,6 +127,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 				assert(false);
 			} else
 				IpChanged(addr, voter);
+
 			return true;
 		}
 	}
@@ -132,6 +137,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 
 void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter)
 {
+	_events->ip_changed(_winnerV4->first.get_sockaddr_storage() , addr.get_sockaddr_storage());
 	Reset();
 	CountIP(addr, voter);
 }

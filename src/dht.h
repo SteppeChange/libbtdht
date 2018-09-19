@@ -112,6 +112,8 @@ struct DhtLogCallbacks {
 	DhtLogLevelCallback* level;
 };
 
+
+
 // asks the client to save the DHT state
 typedef void DhtSaveCallback(void* user_data, const byte* buf, int len);
 
