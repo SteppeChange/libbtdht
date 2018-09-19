@@ -3552,7 +3552,7 @@ void DhtImpl::LoadState(void* user_data)
 			if (addr.from_compact(ip, ip_len)) {
 				_ip_counter->CountIP(addr, _udp_socket_mgr->GetBindAddr());
 				
-				info_log("Loaded possible external IP \"%s\""
+				info_log("PublicIP: Loaded possible external IP \"%s\""
 					, print_sockaddr(addr).c_str());
 			}
 		}
@@ -3600,7 +3600,7 @@ void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter 
 	SockAddr lastWinner = _ip_counter->GetIP();
 	if(_ip_counter->CountIP(addr, voter))
 	{
-		trace_log("External IP changed from: \"%s\" to \"%s\""
+		trace_log("PublicIP: External IP changed from: \"%s\" to \"%s\""
 				, print_sockaddr(lastWinner).c_str()
 				, print_sockaddr(_ip_counter->GetIP()).c_str());
 
