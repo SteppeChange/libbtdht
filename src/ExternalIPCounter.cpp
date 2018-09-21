@@ -62,9 +62,10 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 		return false;
 
 	voters_map::const_iterator vit = _voters.find(voter);
-	if(vit==_voters.end()) {
+	if(vit ==_voters.end()) {
+		// new voter
 		_voters[voter] = addr;
-		debug_log("PublicIP: Update Voter: %s Ip:%s", print_sockaddr(voter).c_str(), print_sockaddr(addr).c_str());
+		debug_log("PublicIP: New voter: %s reports ip:%s", print_sockaddr(voter).c_str(), print_sockaddr(addr).c_str());
 
 		// _HeatStarted = time(NULL);
 
@@ -123,8 +124,8 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 
 			if(_winnerV4->first == addr)
 			{
-				error_log("PublicIP: Something strange!!! Old ip");
-				assert(false);
+				debug_log("PublicIP: old voter reports new ip, but this ip is reported by other voters too, its winner");
+				return false;
 			} else
 				IpChanged(addr, voter);
 
@@ -137,6 +138,10 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 
 void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter)
 {
+	warnings_log("PublicIP: ip was changed %s -> %s",
+				 print_sockaddr(_winnerV4->first).c_str(),
+				 print_sockaddr(addr).c_str());
+
 	_events->ip_changed(_winnerV4->first.get_sockaddr_storage() , addr.get_sockaddr_storage());
 	Reset();
 	CountIP(addr, voter);
