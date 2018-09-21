@@ -262,7 +262,7 @@ bool DhtImpl::handleReadEvent(UDPSocketInterface *socket, byte *buffer
 	if (len > 10 && buffer[0] == 'd' && buffer[len-1] == 'e' && buffer[2] == ':') {
 		return ProcessIncoming(buffer, len, addr);
 	}
-	error_log("Not Kademlia packet\n");
+	error_log("Not Kademlia packet");
 	return false;
 }
 
@@ -2769,7 +2769,7 @@ void DhtImpl::ProcessCallback()
 		_dht_bootstrap = wait_for_bootstrap;
 
         debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
-		debug_log("[%u] failed %u nodes\n\n\n", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+		debug_log("[%u] failed %u nodes", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 
 		if(_dht_events)
 			_dht_events->bootstrap_state_changed(EBootFailed,
@@ -4000,10 +4000,6 @@ DhtLookupScheduler::DhtLookupScheduler(DhtImpl* pDhtImpl
 	, flags(fl)
 {
 	assert(maxOutstandingLookupQueries > 0);
-#if g_log_dht
-	dht_log("DhtLookupScheduler,instantiated,id,%d,time,%d\n", target.id[0]
-		, get_microseconds());
-#endif
 }
 
 /**
@@ -4304,9 +4300,6 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, hpeers, false);
 
 			if (numpeer != 0 && callbackPointers.addnodesCallback != NULL){
-#if g_log_dht
-				dht_log("DhtLookupScheduler,callback,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
 				callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, (byte*)peers, numpeer, false);
 			}
 			free(peers);
@@ -4655,9 +4648,6 @@ DhtProcessBase* FindNodeDhtProcess::Create(DhtImpl* pDhtImpl
 
 void FindNodeDhtProcess::CompleteThisProcess()
 {
-#if g_log_dht
-	dht_log("FindNodeDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
 	// do our stuff
 	if (callbackPointers.processListener)
 		callbackPointers.processListener->ProcessCallback();
@@ -4694,7 +4684,7 @@ const char* const GetPeersDhtProcess::ArgsNamesStr[] =
 
 void GetPeersDhtProcess::CompleteThisProcess()
 {
-	debug_log("GetPeersDhtProcess completed id:%d time:%d\n", target.id[0], get_microseconds());
+	debug_log("GetPeersDhtProcess completed id:%d time:%d", target.id[0], get_microseconds());
 
 	debug_log("[%u] PRE-COMPACT total=%d", process_id() , processManager.size());
 /*	for (int i = 0; i < processManager.size(); ++i) {
@@ -4757,9 +4747,6 @@ GetPeersDhtProcess::GetPeersDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 	argBuf2.SetNumBytesUsed(DHT_ID_SIZE + 3);
 	gpArgumenterPtr->enabled[a_info_hash] = true;
 
-#if g_log_dht
-	dht_log("GetPeersDhtProcess,instantiated,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
 }
 
 DhtProcessBase* GetPeersDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm
@@ -4989,7 +4976,7 @@ void AnnounceDhtProcess::ImplementationSpecificReplyProcess(void *userdata, cons
 	}
 	if(message.dhtMessageType == DHT_RESPONSE){
 		std::string node_addr = print_sockip(peer_id.addr);
-		debug_log("tid:(%d), it was announced at %s \n",  Read32(message.transactionID.b), node_addr.c_str());
+		debug_log("tid:(%d), it was announced at %s",  Read32(message.transactionID.b), node_addr.c_str());
 		// Tell it that we're done
 		if (callbackPointers.addnodesCallback) {
 			byte bytes[DHT_ID_SIZE];
@@ -5013,9 +5000,6 @@ void AnnounceDhtProcess::CompleteThisProcess()
 		callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, NULL, 0, true);
 	}
 
-#if g_log_dht
-	dht_log("AnnounceDhtProcess,complete_announce,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
 	DhtProcessBase::CompleteThisProcess();
 }
 
@@ -5041,10 +5025,6 @@ GetDhtProcess::GetDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 	verbose_log("[%u] NEW GET process", process_id());
 	verbose_log("[%u] maxOutstandingLookupQueries=%d", process_id()
 		, maxOutstandingLookupQueries);
-
-#if g_log_dht
-	dht_log("GetDhtProcess,instantiated,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
 
 }
 
@@ -5127,7 +5107,7 @@ void GetDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 
 void GetDhtProcess::CompleteThisProcess()
 {
-	debug_log("GetDhtProcess,completed,id,%d,time,%d\n", target.id[0], get_microseconds());
+	debug_log("GetDhtProcess,completed,id,%d,time,%d", target.id[0], get_microseconds());
 
 	debug_log("[%u] PRE-COMPACT total=%d", process_id(), processManager.size());
 	for (int i = 0; i < processManager.size(); ++i) {
@@ -5206,9 +5186,6 @@ PutDhtProcess::PutDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 
 	verbose_log("[%u] NEW PUT process", process_id());
 
-#if g_log_dht
-	dht_log("PutDhtProcess,instantiated,id,%d,time,%d\n", target.id[0], get_milliseconds());
-#endif
 }
 
 DhtProcessBase* PutDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
@@ -5223,9 +5200,6 @@ DhtProcessBase* PutDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 
 void PutDhtProcess::Start()
 {
-#if g_log_dht
-	dht_log("PutDhtProcess,start_announce,id,%d,time,%d\n", target.id[0], get_microseconds());
-#endif
 	processManager.SetAllQueriedStatus(QUERIED_NO);
 	DhtProcessBase::Start();
 }
@@ -5274,10 +5248,6 @@ ImmutablePutDhtProcess::ImmutablePutDhtProcess(DhtImpl* pDhtImpl
 
 	verbose_log("[%u] NEW IPUT process", process_id());
 
-#if g_log_dht
-	dht_log("ImmutablePutDhtProcess,instantiated,id,%d,time,%d\n", target.id[0],
-			get_milliseconds());
-#endif
 }
 
 DhtProcessBase* ImmutablePutDhtProcess::Create(DhtImpl* pDhtImpl,
@@ -5290,10 +5260,6 @@ DhtProcessBase* ImmutablePutDhtProcess::Create(DhtImpl* pDhtImpl,
 
 void ImmutablePutDhtProcess::Start()
 {
-#if g_log_dht
-	dht_log("ImmutablePutDhtProcess,start_announce,id,%d,time,%d\n",
-			target.id[0], get_microseconds());
-#endif
 	processManager.SetAllQueriedStatus(QUERIED_NO);
 	DhtProcessBase::Start();
 }
@@ -5575,11 +5541,6 @@ void ImmutablePutDhtProcess::CompleteThisProcess() {
 	// why would this ever be set for a non-FindNodes process?
 	assert(callbackPointers.processListener == nullptr);
 	assert(callbackPointers.addnodesCallback == nullptr);
-
-#if g_log_dht
-	dht_log("ImmutablePutDhtProcess,completed,id,%d,time,%d\n", target.id[0]
-		, get_milliseconds());
-#endif
 
 	if (callbackPointers.putCompletedCallback)
 		callbackPointers.putCompletedCallback(callbackPointers.callbackContext);

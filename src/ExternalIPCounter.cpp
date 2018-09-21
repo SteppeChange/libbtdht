@@ -64,7 +64,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 	voters_map::const_iterator vit = _voters.find(voter);
 	if(vit==_voters.end()) {
 		_voters[voter] = addr;
-		debug_log("PublicIP: Update Voter: %s Ip:%s\n", print_sockaddr(voter).c_str(), print_sockaddr(addr).c_str());
+		debug_log("PublicIP: Update Voter: %s Ip:%s", print_sockaddr(voter).c_str(), print_sockaddr(addr).c_str());
 
 		// _HeatStarted = time(NULL);
 
@@ -75,9 +75,9 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 		size_t ex_ips = _map.size();
 		if(ex_ips>1) // 2 different ip's
 		{
-			warnings_log("PublicIP: May be symmetric NAT detected\n");
+			warnings_log("PublicIP: May be symmetric NAT detected");
 			for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
-				debug_log("PublicIP: Unique external IP: %s\n", print_sockaddr(it->first).c_str());
+				debug_log("PublicIP: Unique external IP: %s", print_sockaddr(it->first).c_str());
 			}
 			if(ex_ips==4 && _events)
 				_events->symmetric_NAT_detected();
@@ -90,7 +90,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 		if(_winnerV4 == _map.end()) {
 			_winnerV4 = inserted.first;
 			// dont call IpChanged because its first voter
-			warnings_log("PublicIP: First time ip detected new ip %s from voter %s voting: %d %d\n",
+			warnings_log("PublicIP: First time ip detected new ip %s from voter %s voting: %d %d",
 						 print_sockaddr(addr).c_str(),
 						 print_sockaddr(voter).c_str(),
 						 _winnerV4->second, inserted.first->second);
@@ -99,7 +99,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 
 		// if the IP vout count exceeds the current leader, replace it
 		if(inserted.first->second > _winnerV4->second) {
-			warnings_log("PublicIP: Detected new ip %s from voter %s voting: %d %d\n",
+			warnings_log("PublicIP: Detected new ip %s from voter %s voting: %d %d",
 					print_sockaddr(addr).c_str(),
 					print_sockaddr(voter).c_str(),
 					_winnerV4->second, inserted.first->second);
@@ -116,14 +116,14 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 			return false;
 		else {
 			// new IP detected. Old voter reports new my ip.
-			warnings_log("PublicIP: New IP was detected. Old voter reports new ip, new ip is %s from voter %s, old ip is %s\n",
+			warnings_log("PublicIP: New IP was detected. Old voter reports new ip, new ip is %s from voter %s, old ip is %s",
 						 print_sockaddr(addr).c_str(),
 						 print_sockaddr(voter).c_str(),
 						 print_sockaddr(vit->second).c_str());
 
 			if(_winnerV4->first == addr)
 			{
-				error_log("PublicIP: Something strange!!! Old ip\n");
+				error_log("PublicIP: Something strange!!! Old ip");
 				assert(false);
 			} else
 				IpChanged(addr, voter);
