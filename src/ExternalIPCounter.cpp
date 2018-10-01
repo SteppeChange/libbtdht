@@ -34,20 +34,50 @@ ExternalIPCounter::ExternalIPCounter(SHACallback* sha, IPEvents* events)
 
 void ExternalIPCounter::Reset()
 {
-       _map.clear();
+       _ip_rating.clear();
        _voters.clear();
-       _winnerV4 = _map.end();
+       _winnerV4 = _ip_rating.end();
+}
+
+
+void ExternalIPCounter::EraseOutdated(uint64_t valid_time_ms)
+{
+	SockAddr pub_ip = _winnerV4->first;
+
+	// delete expired voters
+	for(auto it = _voters.begin(); it != _voters.end(); ) {
+		if (it->second._voting_time < valid_time_ms) {
+			_voters.erase(it++);
+		} else {
+			++it;
+		}
+	}
+
+	// fill new _ip_rating
+	_ip_rating.clear();
+	for(auto it = _voters.begin(); it != _voters.end(); ++it) {
+		_ip_rating[it->second._reported_ip]++;
+	}
+
+	for(auto it = _ip_rating.begin(); it != _ip_rating.end(); ++it) {
+		debug_log("PublicIP: last 60 sec, ip: %s rating: %d", print_sockaddr(it->first).c_str(), it->second);
+	}
+
+	_winnerV4 = _ip_rating.find(pub_ip);
+
+	assert(_winnerV4 != _ip_rating.end());
+
 }
 
 void ExternalIPCounter::SetFixedPubliIp(const SockAddr& addr)
 {
 	_fixed = true;
-	std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, 1));
+	std::pair<candidate_map::iterator, bool> inserted = _ip_rating.insert(std::make_pair(addr, 1));
 	_winnerV4 = inserted.first;
 
 }
 
-bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
+bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, uint64_t now) {
 
 	if(_fixed)
 		return false;
@@ -61,34 +91,34 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 	if(addr.isv6())
 		return false;
 
-	voters_map::const_iterator vit = _voters.find(voter);
+	voters_map::iterator vit = _voters.find(voter);
 	if(vit ==_voters.end()) {
 		// new voter
-		_voters[voter] = addr;
+		_voters[voter] = { addr, now};
 		debug_log("PublicIP: New voter: %s reports ip:%s", print_sockaddr(voter).c_str(), print_sockaddr(addr).c_str());
 
 		// _HeatStarted = time(NULL);
 
 		// attempt to insert this vote
-		std::pair<candidate_map::iterator, bool> inserted = _map.insert(std::make_pair(addr, 1));
+		std::pair<candidate_map::iterator, bool> inserted = _ip_rating.insert(std::make_pair(addr, 1));
+		// increase voter's counter
+		if (!inserted.second)
+			inserted.first->second += 1;
 
 		// check Symmetric NAT
-		size_t ex_ips = _map.size();
+		size_t ex_ips = _ip_rating.size();
 		if(ex_ips>1) // 2 different ip's
 		{
 			warnings_log("PublicIP: May be symmetric NAT detected");
-			for (auto it=_map.begin(), end=_map.end(); it!=end; ++it) {
+			for (auto it=_ip_rating.begin(), end=_ip_rating.end(); it!=end; ++it) {
 				debug_log("PublicIP: Unique external IP: %s", print_sockaddr(it->first).c_str());
 			}
 			if(ex_ips==4 && _events)
 				_events->symmetric_NAT_detected();
 		};
 
-		// increase voter's counter
-		if (!inserted.second)
-			inserted.first->second += 1;
 
-		if(_winnerV4 == _map.end()) {
+		if(_winnerV4 == _ip_rating.end()) {
 			_winnerV4 = inserted.first;
 			// dont call IpChanged because its first voter
 			warnings_log("PublicIP: First time ip detected new ip %s from voter %s voting: %d %d",
@@ -104,7 +134,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 					print_sockaddr(addr).c_str(),
 					print_sockaddr(voter).c_str(),
 					_winnerV4->second, inserted.first->second);
-			IpChanged(addr, voter);
+			IpChanged(addr, voter, now);
 			return true;
 		}
 
@@ -112,7 +142,9 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 	}
 	else
 	{
-		if(vit->second == addr)
+		vit->second._voting_time = now;
+
+		if(vit->second._reported_ip == addr)
 			// already voted with te same address
 			return false;
 		else {
@@ -120,23 +152,56 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter) {
 			warnings_log("PublicIP: New IP was detected. Old voter reports new ip, new ip is %s from voter %s, old ip is %s",
 						 print_sockaddr(addr).c_str(),
 						 print_sockaddr(voter).c_str(),
-						 print_sockaddr(vit->second).c_str());
+						 print_sockaddr(vit->second._reported_ip).c_str());
 
-			if(_winnerV4->first == addr)
-			{
+			if(_winnerV4->first == addr) {
 				debug_log("PublicIP: old voter reports new ip, but this ip is reported by other voters too, its winner");
 				return false;
-			} else
-				IpChanged(addr, voter);
+			} else {
 
-			return true;
+				candidate_map::iterator old_ip = _ip_rating.find(vit->second._reported_ip);
+				candidate_map::iterator new_ip = _ip_rating.find(addr);
+				if(old_ip==_ip_rating.end())
+				{
+					// если нам репортят новый ip то значит старый точно есть в мапе
+					assert(false);
+					return false;
+				} else {
+					// -1 for old ip voter's count
+					old_ip->second--;
+					// +1 for new ip voter's count
+					if(new_ip ==_ip_rating.end()) {
+						_ip_rating[vit->second._reported_ip] = 1;
+						new_ip = _ip_rating.find(addr);
+					}
+					else
+						new_ip->second++;
+
+					// new voter -> ip link
+					vit->second._reported_ip = addr;
+
+					// if the IP vout count exceeds the current leader, replace it
+					if(new_ip->second > _winnerV4->second) {
+						warnings_log("PublicIP: Detected new ip %s from voter %s voting: %d %d",
+									 print_sockaddr(addr).c_str(),
+									 print_sockaddr(voter).c_str(),
+									 _winnerV4->second, vit->second);
+						IpChanged(addr, voter, now);
+						return true;
+					} else
+						return false;
+
+				}
+
+			}
+
 		}
 	}
 
 	return false;
 }
 
-void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter)
+void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now)
 {
 	warnings_log("PublicIP: ip was changed %s -> %s",
 				 print_sockaddr(_winnerV4->first).c_str(),
@@ -144,13 +209,13 @@ void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter)
 
 	_events->ip_changed(_winnerV4->first.get_sockaddr_storage() , addr.get_sockaddr_storage());
 	Reset();
-	CountIP(addr, voter);
+	CountIP(addr, voter, now);
 }
 
-SockAddr ExternalIPCounter::GetIP() const {
-	if(_winnerV4 == _map.end())
-		return SockAddr();
+std::pair<SockAddr,int> ExternalIPCounter::GetIP() const {
+	if(_winnerV4 == _ip_rating.end())
+		return std::make_pair(SockAddr(),0);
 	else
-		return _winnerV4->first;
+		return *_winnerV4;
 }
 

@@ -179,7 +179,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x1;
-	_dht_utversion[3] = 0x8;
+	_dht_utversion[3] = 0x9;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -385,7 +385,7 @@ void DhtImpl::SetId(DhtID id) {
 
 void DhtImpl::GenerateId()
 {
-	SockAddr externIp = _ip_counter->GetIP();;
+	SockAddr externIp = _ip_counter->GetIP().first;
 	byte id_bytes[DHT_ID_SIZE];
 
 	if(!externIp.is_addr_any())
@@ -2289,7 +2289,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 
 	UnlinkRequest(req);
 
-	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
+	uint64_t now = get_milliseconds();
+	int rtt = (std::max)(int(now - req->time), 1);
 
 
 	bool is_pong = false;
@@ -2317,12 +2318,12 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 			SockAddr myIp;
 			myIp.set_addr4(*((uint32 *) message.external_ip.b));
 			myIp.set_port(ReadBE16(message.external_ip.b + 4));
-			CountExternalIPReport(myIp, req->peer.addr);
+			CountExternalIPReport(myIp, req->peer.addr, now);
 		} else if (message.external_ip.len == 18) {
 			SockAddr myIp;
 			myIp.set_addr6(*((in6_addr *) message.external_ip.b));
 			myIp.set_port(ReadBE16(message.external_ip.b + 16));
-			CountExternalIPReport(myIp, req->peer.addr);
+			CountExternalIPReport(myIp, req->peer.addr, now);
 		}
 	}
 
@@ -2734,7 +2735,7 @@ bool DhtImpl::is_boot_success() {
 			_dht_events->bootstrap_state_changed(
 					EBootSuccess,
 					_my_id.sha1(),
-					_ip_counter->GetIP().get_sockaddr_storage(),
+					_ip_counter->GetIP().first.get_sockaddr_storage(),
 					_udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 		return true;
@@ -2774,7 +2775,7 @@ void DhtImpl::ProcessCallback()
 		if(_dht_events)
 			_dht_events->bootstrap_state_changed(EBootFailed,
 												 _my_id.sha1(),
-												 _ip_counter->GetIP().get_sockaddr_storage(),
+												 _ip_counter->GetIP().first.get_sockaddr_storage(),
 												 _udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	}
@@ -3125,6 +3126,9 @@ void DhtImpl::Tick()
 	static int _1min_counter;
 	static int _4_sec_counter;
 
+
+	uint64_t now = get_milliseconds();
+
 	_dht_probe_quota = _dht_probe_rate;
 
 	// May accumulate up to 3 second of DHT bandwidth.
@@ -3134,12 +3138,12 @@ void DhtImpl::Tick()
 
 	// Expire 30 second old requests
 	for(DhtRequest **reqp = &_requests.first(), *req; (req = *reqp) != NULL; ) {
-		int delay = (int)(get_milliseconds() - req->time);
+		int delay = (int)(now - req->time);
 
 
 		// Support time that goes backwards
 		if (delay < 0) {
-			req->time = get_milliseconds();
+			req->time = now;
 			reqp = &req->next;
 			continue;
 		}
@@ -3190,6 +3194,9 @@ void DhtImpl::Tick()
 
 			DoBootstrap();
 		}
+	} else {
+		if((now > 60 * 1000) &&  (now / 1000 % 30 == 0)) // every 60 sec
+			_ip_counter->EraseOutdated(now - (60 * 1000));
 	}
 
 	if (--_refresh_buckets_counter < 0) {
@@ -3273,7 +3280,7 @@ void DhtImpl::Restart() {
 	if(_dht_events)
 		_dht_events->bootstrap_state_changed(EBootStart,
 											 _my_id.sha1(),
-											 _ip_counter->GetIP().get_sockaddr_storage(),
+											 _ip_counter->GetIP().first.get_sockaddr_storage(),
 											 _udp_socket_mgr->GetBindAddr().get_sockaddr_storage());
 
 	bool old_g_dht_enabled = _dht_enabled;
@@ -3451,7 +3458,7 @@ void DhtImpl::SaveState(void* user_data)
 	// Save Public IP
 	if (_ip_counter) {
 		byte buf[256];
-		SockAddr addr = _ip_counter->GetIP();
+		SockAddr addr = _ip_counter->GetIP().first;
 		size_t iplen = addr.compact(buf, true);
 		BencEntityMem beMemIP(buf, iplen);
 		dict->Insert("ip", beMemIP);
@@ -3550,7 +3557,7 @@ void DhtImpl::LoadState(void* user_data)
 			// one vote for this IP, just to seed it with something
 			SockAddr addr;
 			if (addr.from_compact(ip, ip_len)) {
-				_ip_counter->CountIP(addr, _udp_socket_mgr->GetBindAddr());
+				_ip_counter->CountIP(addr, _udp_socket_mgr->GetBindAddr(), 0);
 				
 				info_log("PublicIP: Loaded possible external IP \"%s\""
 					, print_sockaddr(addr).c_str());
@@ -3587,17 +3594,17 @@ int DhtImpl::GetNumPutItems()
 
 sockaddr_storage DhtImpl::get_public_ip() const
 {
-	return _ip_counter->GetIP().get_sockaddr_storage();
+	return _ip_counter->GetIP().first.get_sockaddr_storage();
 }
 
 // addr - new ip reported in responce
 // voter - ip who responce on request
 
-void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter )
+void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter , uint64_t now)
 {
 	if (_ip_counter == NULL) return;
 
-	if(_ip_counter->CountIP(addr, voter))
+	if(_ip_counter->CountIP(addr, voter, now))
 	{
 		 // GetIP() return incorrect result if CountIP return true
 		_save_callback(_init_user_data,0,0);
@@ -3669,7 +3676,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	// never add ourself to the routing table
 	if (id.id == _my_id)
 		return NULL;
-	if(id.addr == _ip_counter->GetIP())
+	if(id.addr == _ip_counter->GetIP().first)
 		return NULL;
 
 	// Don't allow bootstrap servers into the routing table

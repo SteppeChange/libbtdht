@@ -1918,7 +1918,7 @@ public:
 	int GetNumPeersTracked() override;
 
 	int GetNumPutItems();
-	void CountExternalIPReport( const SockAddr& addr, const SockAddr& voter );
+	void CountExternalIPReport( const SockAddr& addr, const SockAddr& voter , uint64_t now);
 	sockaddr_storage get_public_ip() const override;
 	bool IsBootstrap(const SockAddr& addr);
 

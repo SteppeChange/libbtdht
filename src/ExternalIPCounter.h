@@ -36,24 +36,29 @@ class IPEvents {
 		virtual void ip_changed(sockaddr_storage const& old, sockaddr_storage const& new_one) = 0;
 };
 
+struct voter_info {
+	SockAddr _reported_ip;
+	uint64_t _voting_time;
+};
 
 class ExternalIPCounter
 {
 public:
 	ExternalIPCounter(SHACallback* sha, IPEvents* events);
 	// return tru if addr cahnged
-	bool CountIP( const SockAddr& addr, const SockAddr& voter);
+	bool CountIP( const SockAddr& addr, const SockAddr& voter, uint64_t now);
 	void SetFixedPubliIp(const SockAddr& addr);
-	SockAddr GetIP() const;
+	std::pair<SockAddr,int> GetIP() const;
 	void Reset();
-	void IpChanged(const SockAddr& addr, const SockAddr& voter);
+	void EraseOutdated(uint64_t valid_time_ms);
+	void IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now);
 
 private:
 	typedef std::map<SockAddr, int> candidate_map; // <my ip, voters count>
-	typedef std::map<SockAddr, SockAddr> voters_map; // <voter ip, mt ip>
+	typedef std::map<SockAddr, voter_info> voters_map; // <voter ip, voter_info>
 
 	voters_map _voters;
-	candidate_map _map;
+	candidate_map _ip_rating;
 	candidate_map::const_iterator _winnerV4;
 	bool _fixed;
 
