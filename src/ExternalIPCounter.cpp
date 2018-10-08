@@ -65,7 +65,7 @@ void ExternalIPCounter::EraseOutdated(uint64_t valid_time_ms)
 
 	_winnerV4 = _ip_rating.find(pub_ip);
 
-	assert(_winnerV4 != _ip_rating.end());
+// it happens if there is no internet	assert(_winnerV4 != _ip_rating.end());
 
 }
 
