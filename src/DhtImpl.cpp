@@ -6241,7 +6241,7 @@ void FindNodeEventualyDhtProcess::ImplementationSpecificReplyProcess(
                             
 							found_peer = peer;
 							source_peer = peer_id;
-							Abort();
+							//Abort();
 							Sucess(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(), source_peer.addr.get_sockaddr_storage(), 0);
 							return;
 						}
@@ -6294,7 +6294,7 @@ void FindNodeEventualyDhtProcess::Sucess(sockaddr_storage const& node_addr, sha1
 		success_fun(found_peer.addr.get_sockaddr_storage(), source_peer.id.sha1(),
 					source_peer.addr.get_sockaddr_storage(), 0);
 	}
-	success_fun = nullptr;
+	//success_fun = nullptr;
 
 }
 
