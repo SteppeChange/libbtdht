@@ -52,6 +52,7 @@ public:
 	void Reset();
 	void EraseOutdated(uint64_t valid_time_ms);
 	void IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now);
+	void DumpStatistics();
 
 private:
 	typedef std::map<SockAddr, int> candidate_map; // <my ip, voters count>

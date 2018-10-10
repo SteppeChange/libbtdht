@@ -154,34 +154,34 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, ui
 						 print_sockaddr(voter).c_str(),
 						 print_sockaddr(vit->second._reported_ip).c_str());
 
+			DumpStatistics();
+
 			if(_winnerV4->first == addr) {
 				debug_log("PublicIP: old voter reports new ip, but this ip is reported by other voters too, its winner");
 				return false;
 			} else {
 
 				candidate_map::iterator old_ip = _ip_rating.find(vit->second._reported_ip);
-				candidate_map::iterator new_ip = _ip_rating.find(addr);
-				if(old_ip==_ip_rating.end())
+				// candidate_map::iterator new_ip = _ip_rating.find(addr);
+				std::pair<candidate_map::iterator, bool> new_ip = _ip_rating.insert(std::make_pair(addr, 1));
+				if(old_ip ==_ip_rating.end())
 				{
 					// если нам репортят новый ip то значит старый точно есть в мапе
+					error_log("PublicIP: old ip %s not found at raiting ", print_sockaddr(vit->second._reported_ip).c_str());
 					assert(false);
 					return false;
 				} else {
 					// -1 for old ip voter's count
 					old_ip->second--;
 					// +1 for new ip voter's count
-					if(new_ip ==_ip_rating.end()) {
-						_ip_rating[vit->second._reported_ip] = 1;
-						new_ip = _ip_rating.find(addr);
-					}
-					else
-						new_ip->second++;
+					if(new_ip.second == false)
+						new_ip.first->second++;
 
 					// new voter -> ip link
 					vit->second._reported_ip = addr;
 
 					// if the IP vout count exceeds the current leader, replace it
-					if(new_ip->second > _winnerV4->second) {
+					if(new_ip.first->second > _winnerV4->second) {
 						warnings_log("PublicIP: Detected new ip %s from voter %s voting: %d %d",
 									 print_sockaddr(addr).c_str(),
 									 print_sockaddr(voter).c_str(),
@@ -201,11 +201,28 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, ui
 	return false;
 }
 
+void ExternalIPCounter::DumpStatistics()
+{
+
+	debug_log("PublicIP: *** Dump:");
+	for (auto it=_ip_rating.begin(), end=_ip_rating.end(); it!=end; ++it)
+		debug_log("PublicIP: *** external IP: %s voters: %d", print_sockaddr(it->first).c_str(), it->second);
+
+	for(auto it = _voters.begin(); it != _voters.end(); ++it)
+		debug_log("PublicIP: *** voter IP: %s reported: %s time: %ld"
+				, print_sockaddr(it->first).c_str()
+				, print_sockaddr(it->second._reported_ip).c_str()
+				, it->second._voting_time );
+
+}
+
 void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now)
 {
 	warnings_log("PublicIP: ip was changed %s -> %s",
 				 print_sockaddr(_winnerV4->first).c_str(),
 				 print_sockaddr(addr).c_str());
+
+	DumpStatistics();
 
 	_events->ip_changed(_winnerV4->first.get_sockaddr_storage() , addr.get_sockaddr_storage());
 	Reset();

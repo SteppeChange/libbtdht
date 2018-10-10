@@ -290,6 +290,7 @@ void DhtImpl::Initialize(void* user_data, UDPSocketInterface *udp_socket_mgr
 	// Initialize the request list
 	_requests.init();
 
+	_ip_counter->Reset();
 	Restart();
 
 	// Load the DHT state
@@ -3346,7 +3347,6 @@ void DhtImpl::Restart() {
 	_dht_enabled = old_g_dht_enabled;
 	_closing = !_dht_enabled;
 
-
 }
 
 bool DhtImpl::handleICMP(UDPSocketInterface *socket, byte *buffer, size_t len, const SockAddr& addr)
@@ -3603,12 +3603,10 @@ sockaddr_storage DhtImpl::get_public_ip() const
 void DhtImpl::CountExternalIPReport(const SockAddr& addr, const SockAddr& voter , uint64_t now)
 {
 	if (_ip_counter == NULL) return;
-
 	if(_ip_counter->CountIP(addr, voter, now))
 	{
 		 // GetIP() return incorrect result if CountIP return true
 		_save_callback(_init_user_data,0,0);
-
 		Restart();
 	}
 }
