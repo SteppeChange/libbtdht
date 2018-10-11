@@ -157,8 +157,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_events = dht_events;
 
 	_dht_bootstrap = not_bootstrapped;
-	_bootstrap_attempts = 0;
-	_allow_new_job = false;
+	_dht_bootstrap_timer = 0;
 	_refresh_buckets_counter = -1;
 	_dht_peers_count = 0;
 	_dht_request_response = 0;
@@ -209,8 +208,6 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_ed25519_sign_callback = NULL;
 	_ed25519_verify_callback = NULL;
 	_sha_callback = NULL;
-
-	debug_log("DhtImpl() [bootstrap=%d]", _dht_bootstrap);
 
 }
 
@@ -319,11 +316,18 @@ void DhtImpl::Enable(bool enabled, int rate)
 	_dht_probe_rate = 5;
 	if (_dht_enabled != enabled) {
 		_dht_enabled = enabled;
+
+		// reset boot process
 		_dht_bootstrap = not_bootstrapped;
-		_closing = !enabled;
+		_dht_bootstrap_timer = 0;
+		_dht_peers_count = 0;
+		_dht_request_response = 0;
+
+
+			_closing = !enabled;
 	}
 
-	debug_log("Enable(enabled=%d, rate=%d) [bootstrap=%d]", enabled, rate, _dht_bootstrap);
+	debug_log("DHTBootstrap: Enable(enabled=%d, rate=%d) [bootstrap=%d]", enabled, rate, _dht_bootstrap);
 }
 
 
@@ -2459,18 +2463,26 @@ void DhtImpl::GenRandomIDInBucket(DhtID &target, DhtBucket *bucket)
 
 void DhtImpl::DoBootstrap()
 {
-
-	if(_boot_mode) {
+	if(_boot_mode) { // for boot servers
 		_dht_bootstrap = DhtImpl::bootstrap_complete;
 		return;
 	}
 
+	if(_dht_bootstrap != DhtImpl::not_bootstrapped)
+		return;
 
 	if (_closing) return;
 
-	++_bootstrap_attempts;
+	// (is_boot_success() == true) it can be true for start after refresh DHT ID, old node still responces
+	info_log("DHTBootstrap: start bootstrap");
+	// Запускаем процесс поиска соседей
+	// DhtImpl::ProcessCallback() сигнализирует о е окончании и успешности bootstrap
+	// До этого InsertUpdate с целью оптимизации может сообщить что BootSucces
+	// После restart мы получаем старые ответы и они идут в зачет BootSucces
 
-	debug_log("start bootstrap");
+
+	_dht_bootstrap = bootstrap_in_process;
+
 	_bootstrap_start = get_milliseconds();
 	debug_log("[0] start\n");
 	DhtID target = _my_id;
@@ -2728,10 +2740,16 @@ bool DhtImpl::is_boot_success() {
 	if (_dht_bootstrap == DhtImpl::bootstrap_complete)
 		return true;
 
+	if (_dht_bootstrap == DhtImpl::not_bootstrapped)
+		return false;
+
+//	info_log("DHTBootstrap: state %d, %d responces, %d neighbohours", _dht_bootstrap, _dht_request_response, _dht_peers_count);
+
 	if (_dht_bootstrap != DhtImpl::bootstrap_complete
 		&& _dht_peers_count >= BOOT_COMPLETE
 		&& _dht_request_response >= 2) {
 
+		info_log("DHTBootstrap: is_boot_success - EBootSuccess");
 		if (_dht_events)
 			_dht_events->bootstrap_state_changed(
 					EBootSuccess,
@@ -2743,10 +2761,10 @@ bool DhtImpl::is_boot_success() {
 	}
 
 	if(_dht_peers_count < BOOT_COMPLETE)
-		warnings_log("boot: not enough neighbors, has %d but requred %d  ", _dht_peers_count, BOOT_COMPLETE);
+		warnings_log("DHTBootstrap: is_boot_success - not enough neighbors, has %d but requred %d  ", _dht_peers_count, BOOT_COMPLETE);
 
 	if(_dht_request_response < 2)
-		warnings_log("boot: not enough responces, has %d but requred 2  ", _dht_request_response);
+		warnings_log("DHTBootstrap: is_boot_success - not enough responces, has %d but requred 2  ", _dht_request_response);
 
 	return false;
 }
@@ -2764,14 +2782,15 @@ void DhtImpl::ProcessCallback()
 		_dht_bootstrap = bootstrap_complete;
 		_refresh_buckets_counter = 0; // start forced bucket refresh
 
-		debug_log("DhtImpl::ProcessCallback()  %d miliseconds, %d peers", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+		debug_log("DHTBootstrap: DhtImpl::ProcessCallback()  %d miliseconds, %d peers", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 
 	} else {
 
-		_dht_bootstrap = wait_for_bootstrap;
+		_dht_bootstrap = not_bootstrapped;
+		_dht_bootstrap_timer = bootstrap_restart_time_out;
 
-        debug_log("DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
-		debug_log("[%u] failed %u nodes", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
+        debug_log("DHTBootstrap: DhtImpl::ProcessCallback() [ bootstrap failed (%d)]", _dht_bootstrap);
+		debug_log("DHTBootstrap: [%u] failed %u nodes", uint(get_milliseconds() - _bootstrap_start), _dht_peers_count);
 
 		if(_dht_events)
 			_dht_events->bootstrap_state_changed(EBootFailed,
@@ -2975,7 +2994,6 @@ void DhtImpl::Vote(void *ctx_ptr, const sha1_hash* info_hash, int vote, DhtVoteC
 	memcpy(buf + DHT_ID_SIZE, "rating", 6);
 	sha1_hash target = _sha_callback(buf, sizeof(buf));
 	DoVote(target, vote, callb, ctx_ptr);
-	_allow_new_job = false;
 }
 
 DhtID DhtImpl::MutableTarget(const byte* key, const byte* salt, int salt_length)
@@ -3098,7 +3116,6 @@ void DhtImpl::AnnounceInfoHash(
 	CopyBytesToDhtID(id, info_hash);
 	DoAnnounce(id, addnodes_callback,
 		pcb, file_name, ctx, flags);
-	_allow_new_job = false;
 }
 
 void DhtImpl::SetRate(int bytes_per_second)
@@ -3125,7 +3142,6 @@ void DhtImpl::Tick()
 {
 	// TODO: make these members. and they could probably be collapsed to 1
 	static int _1min_counter;
-	static int _4_sec_counter;
 
 
 	uint64_t now = get_milliseconds();
@@ -3189,13 +3205,17 @@ void DhtImpl::Tick()
 
 	}
 
-	if (_dht_bootstrap >= not_bootstrapped) {
-		// Boot-strapping.
-		if (_dht_bootstrap-- == not_bootstrapped) {
+	// Boot Process
+	if (_dht_bootstrap == not_bootstrapped) {
+		_dht_bootstrap_timer--;
+		info_log("DHTBootstrap: wait for bootstrap %d sec", _dht_bootstrap_timer);
+	}
 
+	if (_dht_bootstrap == not_bootstrapped && _dht_bootstrap_timer<=0)
 			DoBootstrap();
-		}
-	} else {
+
+	if(bootstrap_complete == _dht_bootstrap)
+	{
 		if((now > 60 * 1000) &&  (now / 1000 % 30 == 0)) // every 60 sec
 			_ip_counter->EraseOutdated(now - (60 * 1000));
 	}
@@ -3205,56 +3225,6 @@ void DhtImpl::Tick()
 		_refresh_buckets_counter = _ping_frequency * _ping_batching;
 		for (int i = 0; i < _ping_batching; ++i) {
 			PingStalestNode();
-		}
-	}
-
-	// Allow a new job every 4 seconds.
-	if ( (++_4_sec_counter & 3) == 0) {
-#ifdef _DHT_STATS
-		static DWORD last = get_milliseconds() - 4000;
-		static int64 inrequests = 0;
-		static int64 outrequests = 0;
-
-		DhtAccounting *acct = _dht_accounting;
-		int64 t_inrequests = acct[DHT_BW_IN_TOTAL].count;
-		int64 t_outrequests = acct[DHT_BW_OUT_TOTAL].count;
-
-		double t = (get_milliseconds() - last) / 1000.0;
-		double iqps = (t_inrequests - inrequests) / t;
-		double oqps = (t_outrequests - outrequests) / t;
-		double known = acct[DHT_BW_IN_KNOWN].count * 100.0 / acct[DHT_BW_IN_TOTAL].count;
-		trace_log("QPS in: %d out: %d (known: %d%%)", (int)(iqps+0.5), (int)(oqps+0.5), (int)(known+0.5));
-
-		last = get_milliseconds();
-		inrequests = t_inrequests;
-		outrequests = t_outrequests;
-#endif
-
-		_allow_new_job = true;
-
-		int lowest_span = CalculateLowestBucketSpan();
-
-		if (lowest_span < _lowest_span) _lowest_span = lowest_span;
-
-		time_t now = time(NULL);
-
-		// if there's more than 3 levels to the deepest level we've seen
-		// keep bootstrapping, but not too often. Back off gradually to
-		// not keep hammering the bootstrap server when we can't get a foot hold
-		// in the DHT anyway.
-		// if we haven't reached the lowest span, the retries are:
-		// 1, 2, 4, 8 etc. minutes
-		// if we have fewer than 10 nodes, the retry intervals are:
-		// 2, 4, 8, 16 etc. minutes
-		if ((lowest_span > _lowest_span + 3
-				&& now - _last_self_refresh > 60 * (1 << _bootstrap_attempts))
-			|| (_dht_peers_count < 10
-				&& now - _last_self_refresh > 2 * 60 * (1 << _bootstrap_attempts))) {
-
-			// it's been 10 minutes since our last bootstrap attempt, issue
-			// another one. If we haven't reached close enough to our routing
-			// table depth, try every minute instead.
-			DoBootstrap();
 		}
 	}
 
@@ -3274,7 +3244,7 @@ void DhtImpl::Restart() {
 *
 **/
 
-	info_log("ReStart Kademlia library %c%c %d.%d", _dht_utversion[0], _dht_utversion[1], _dht_utversion[2], _dht_utversion[3] );
+	info_log("DHTBootstrap: ReStart Kademlia library %c%c %d.%d", _dht_utversion[0], _dht_utversion[1], _dht_utversion[2], _dht_utversion[3] );
 
 	GenerateId();
 

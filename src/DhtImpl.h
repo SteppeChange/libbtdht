@@ -1935,7 +1935,6 @@ public:
 	Ed25519VerifyCallback* _ed25519_verify_callback;
 	Ed25519SignCallback* _ed25519_sign_callback;
 	ExternalIPCounter* _ip_counter;
-	bool _boot_mode;
 
 	// the buckets in the routing table. These buckets are ordered by their
 	// absolute location in the node ID space, _not_ by the distance from
@@ -2003,18 +2002,11 @@ public:
 #define MAX_PEERS (4*1000*1000)
 	int _peers_tracked;
 	time_t _last_self_refresh;
-	// this is different than _dht_bootstrap_failed. This counts the number of
-	// times we've tried to bootstrap. It's not reset just because the bootstrap
-	// server responds. This is used to gradually back-off our aggressiveness
-	// of trying to bootstrap, to eventually give up.
-	int _bootstrap_attempts;
 
 	uint32 _cur_token[2];
 	uint32 _prev_token[2];
-	int _dht_bootstrap; // Possible states in enum below
 
 	int _dht_busy;
-	bool _allow_new_job;
 	bool _dht_enabled;
 	bool _dht_read_only;
 	bool _closing; // app is closing, don't initiate bootstrap
@@ -2033,11 +2025,14 @@ public:
 	int _lowest_span;
 
 	// Possible states for _dht_bootstrap
-	enum {
-		bootstrap_complete = -2, 	// -2: bootstrap find_nodes complete
-		not_bootstrapped = 0,			//  1: dht not bootstrapped (initial state)
-		wait_for_bootstrap = 15
-	};
+	enum boot_state {
+		not_bootstrapped = 0,		//  1: dht not bootstrapped (initial state)
+		bootstrap_in_process = 1,
+		bootstrap_complete = 2  	// -2: bootstrap find_nodes complete
+	} _dht_bootstrap;
+	const int bootstrap_restart_time_out = 3; // secs
+	int _dht_bootstrap_timer;
+	bool _boot_mode; // true = boot server
 
 	enum {
 		DHT_BW_IN_REQ = 0,	// incoming requests
