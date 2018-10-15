@@ -1891,6 +1891,7 @@ public:
 			   SockAddr const* relay);
 
 	void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) override ;
+	void open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id, channel_info const&  info) override;
 
 	void SetRate(int bytes_per_second) override;
 	void SetVersion(char const* client, int major, int minor) override;
@@ -2140,6 +2141,7 @@ public:
 
 	DhtRequest *SendPing(const DhtPeerID &peer_id);
 	DhtRequest *SendFindNode(const DhtPeerID &peer_id);
+	DhtRequest *SendOpenChannel(const DhtPeerID &peer_id, channel_info const&  info);
 
 	void SendPunch(SockAddr const& dst, SockAddr const& punchee);
 
@@ -2217,6 +2219,7 @@ private:
 
 public:
 	bool ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packetSize);
+	bool ProcessQueryOpenChannel(DHTMessage &message, DhtPeerID &peerID, int packetSize);
 	bool ProcessQueryFindNode(DHTMessage &message, DhtPeerID &peerID,
 			int packetSize);
 	bool ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
@@ -2275,6 +2278,9 @@ public:
 
 	void OnPong(void*& userdata, const DhtPeerID &peer_id
         , DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
+
+	void OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id
+			, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags);
 
 	// the respons from a NICE ping (part of bucket maintanence)
 	void OnPingReply(void*& userdata, const DhtPeerID &peer_id
