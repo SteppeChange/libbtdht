@@ -873,6 +873,33 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 	return req;
 }
 
+DhtRequest *DhtImpl::SendOpenChannel(const DhtPeerID &peer_id) {
+	unsigned char buf[120];
+	smart_buffer sb(buf, sizeof(buf));
+
+	DhtRequest *req = AllocateRequest(peer_id);
+
+	trace_log(">>> open_channel(%d): %s", req->tid
+			, print_sockaddr(peer_id.addr).c_str());
+
+	sb("d1:ad");
+	sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
+	sb("2:to20:")(peer_id.id);
+	sb("e1:q12:open_channel");
+	put_is_read_only(sb);
+	put_transaction_id(sb, Buffer((byte*)&req->tid, 4));
+	put_version(sb);
+	sb("1:y1:qe");
+	assert(sb.length() >= 0);
+
+	if (sb.length() < 0) {
+		error_log("SendOpenChannel blob exceeds maximum size.");
+		return NULL;
+	}
+	SendTo(peer_id.addr, buf, sb.length());
+	return req;
+}
+
 void DhtImpl::ping(sockaddr_storage const& node_addr, sha1_hash const& node_id)
 {
 	DhtPeerID peer;
@@ -880,6 +907,15 @@ void DhtImpl::ping(sockaddr_storage const& node_addr, sha1_hash const& node_id)
 	peer.id = node_id;
 	DhtRequest *req = SendPing(peer);
 	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnPong, 0);
+}
+
+void DhtImpl::open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id)
+{
+	DhtPeerID peer;
+	peer.addr = node_addr;
+	peer.id = node_id;
+	DhtRequest *req = SendOpenChannel(peer);
+	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnOpenChannelResponce, 0);
 }
 
 // sends a single find-node request
@@ -2043,6 +2079,50 @@ bool DhtImpl::ProcessQueryVote(DHTMessage &message, DhtPeerID &peerID,
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
+bool DhtImpl::ProcessQueryOpenChannel(DHTMessage &message, DhtPeerID &peerID, int packetSize) {
+	unsigned char buf[512];
+	smart_buffer sb(buf, sizeof(buf));
+
+	trace_log("<<< open_channel (%d) from :%s (id:%s)",
+			  Read32(message.transactionID.b),
+			  print_sockaddr(peerID.addr).c_str(),
+			  format_dht_id(peerID.id).c_str());
+
+	DhtID to_dht;
+	if(message.to_id)
+		CopyBytesToDhtID(to_dht, message.to_id);
+
+	uint32_t responce = EOpenChannelUnInitialized;
+
+	if(_my_id == to_dht && message.to_id) {
+		if (_dht_events)
+			responce = _dht_events->dht_recv_open_channel(peerID.id.sha1(), peerID.addr.get_sockaddr_storage());
+			assert(responce>=EOpenChannelCustom);
+	}
+	else {
+		warnings_log("wrong incoming open_channel to %s (my:%s)",
+					 format_dht_id(to_dht).c_str(),
+					 format_dht_id(_my_id).c_str());
+		responce = EOpenChannelWrongDestination;
+	}
+
+	sb("d");
+	AddIP(sb, message.id, peerID.addr);
+
+	sb("1:rd2:id20:")(DHT_ID_SIZE, _my_id_bytes)("e");
+
+	assert(sizeof(responce) == 4);
+	sb("5:rcode4:")(4, (unsigned char*)&responce);
+
+	put_transaction_id(sb, message.transactionID);
+	put_version(sb);
+	sb("1:y1:re");
+
+	assert(sb.length() >= 0);
+
+	return AccountAndSend(peerID, sb.begin(), sb.length(), packetSize);
+}
+
 bool DhtImpl::ProcessQueryPing(DHTMessage &message, DhtPeerID &peerID, int packetSize) {
 	unsigned char buf[512];
 	smart_buffer sb(buf, sizeof(buf));
@@ -2198,7 +2278,10 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 
 	// Nodes that are read_only do not respond to queries, so we don't
 	// want to add them to the buckets.  They also will not be pinged.
-	if (!message.read_only && message.dhtCommand!=DHT_QUERY_PING && message.dhtCommand!=DHT_QUERY_PUNCH) {
+	if (!message.read_only
+		&& message.dhtCommand!=DHT_QUERY_PING
+		&& message.dhtCommand!=DHT_QUERY_PUNCH
+		&& message.dhtCommand!=DHT_QUERY_OPEN_CHANNEL) {
 		DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_INCOMING, true);
 		// Update version
 		if (peer != NULL) {
@@ -2207,6 +2290,7 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 	}
 
 	switch(message.dhtCommand){
+		case DHT_QUERY_OPEN_CHANNEL: return ProcessQueryOpenChannel(message, peerID, packetSize);
 		case DHT_QUERY_PING: return ProcessQueryPing(message, peerID, packetSize);
 		case DHT_QUERY_FIND_NODE: return ProcessQueryFindNode(message, peerID, packetSize);
 		case DHT_QUERY_GET_PEERS: return ProcessQueryGetPeers(message, peerID, packetSize);
@@ -2291,26 +2375,25 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	// Report the port we sent the packet to.
 	peerID.addr.set_port(req->peer.addr.get_port());
 
-
 	UnlinkRequest(req);
 
 	uint64_t now = get_milliseconds();
 	int rtt = (std::max)(int(now - req->time), 1);
 
-
-	bool is_pong = false;
+	bool can_go_through_local_network = false;
+	// is pong or open_channel
 	if(name=="DhtImpl")
 	{
 		DhtRequestListener<DhtImpl>* listener = static_cast<DhtRequestListener<DhtImpl>*>(req->_pListener);
 		if(listener->_pCallback == &DhtImpl::OnPong)
-			is_pong =  true;
+			can_go_through_local_network =  true;
 	}
 
 	// Update the internal tables with this peer's information
 	// The contacted attribute is set because it replied to a query.
 	DhtPeer *peer = 0;
 
-	if(!is_pong) // ping reply can be from local node, we need to exclude this influence
+	if(!can_go_through_local_network) // ping reply can be from local node, we need to exclude this influence
 		peer = Update(peerID, IDht::DHT_ORIGIN_UNKNOWN, true, rtt);
 
 	// Update version field
@@ -2318,7 +2401,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		peer->client.from_compact(message.version.b, message.version.len);
 	}
 
-	if(!is_pong) {
+	if(!can_go_through_local_network) {
 		if (message.external_ip.len == 6) {
 			SockAddr myIp;
 			myIp.set_addr4(*((uint32 *) message.external_ip.b));
@@ -2855,6 +2938,16 @@ void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req,
 	if (_dht_events)
 		_dht_events->dht_recv_pong(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags);
 }
+
+void DhtImpl::OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
+{
+	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
+	if (_dht_events)
+		_dht_events->dht_recv_open_channel_responce(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags);
+}
+
+
+
 
 void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 	, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)

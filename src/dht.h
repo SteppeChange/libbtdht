@@ -65,6 +65,14 @@ enum BootState {
 	EBootFailed = 2,
 };
 
+
+enum OpenChannelCodes {
+	EOpenChannelUnInitialized = 0,
+	EOpenChannelWrongDestination = 1,
+	EOpenChannelInternalError = 2,
+	EOpenChannelCustom = 100 // All custom codes shold be 100+
+};
+
 inline const char* boot_to_string(BootState st)
 {
 	switch(st)
@@ -82,8 +90,12 @@ public:
 	virtual void bootstrap_state_changed(BootState state, sha1_hash new_id, sockaddr_storage const& public_address, sockaddr_storage const& local_address) = 0;
 	virtual void dht_recv_punch_test(int punch_id, sockaddr_storage const &src_addr) = 0;
 	virtual void dht_recv_punch_request_relay(int punch_id, sockaddr_storage const &src_addr, const byte *target) = 0;
+
 	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
 	virtual void dht_recv_ping(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
+
+	virtual uint32_t dht_recv_open_channel(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
+	virtual void dht_recv_open_channel_responce(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
 
 //	virtual ~DHTEvents() {};
 };
@@ -283,7 +295,16 @@ public:
 							 SockAddr const& target_local, SockAddr const& target_public, SockAddr const& target_relay,
 							 sha1_hash const& executor_id, SockAddr const& executor,
 							 SockAddr const& relay) = 0;
+
+	// just regular ping pong (measuring RTT and NAT hole refreshing)
 	virtual void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
+
+	/*
+	 * open translation channel request (response)
+	 * node_addr - target node ip
+	 * node_id - target node DHT ID
+	 */
+	virtual void open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;
 	virtual void Enable(bool enabled, int rate) = 0;

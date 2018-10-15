@@ -248,6 +248,12 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		dhtCommand = DHT_QUERY_PING;
 		to_id = (byte*)args->GetString("to", DHT_ID_SIZE);
 	}
+	else if (strcmp(command,"open_channel") == 0) {
+		dhtCommand = DHT_QUERY_OPEN_CHANNEL;
+		to_id = (byte*)args->GetString("to", DHT_ID_SIZE);
+//		Buffer translationIdStr;
+//		translationIdStr.b = (byte*)args->GetString("...", &translationIdStr.len);
+	}
 	else {
 		// unknown messages with either a 'target'
 		// or an 'info-hash' argument are treated
