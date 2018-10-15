@@ -1891,7 +1891,7 @@ public:
 			   SockAddr const* relay);
 
 	void ping(sockaddr_storage const& node_addr, sha1_hash const& node_id) override ;
-	void open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id) override;
+	void open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id, channel_info const&  info) override;
 
 	void SetRate(int bytes_per_second) override;
 	void SetVersion(char const* client, int major, int minor) override;
@@ -2141,7 +2141,7 @@ public:
 
 	DhtRequest *SendPing(const DhtPeerID &peer_id);
 	DhtRequest *SendFindNode(const DhtPeerID &peer_id);
-	DhtRequest *SendOpenChannel(const DhtPeerID &peer_id);
+	DhtRequest *SendOpenChannel(const DhtPeerID &peer_id, channel_info const&  info);
 
 	void SendPunch(SockAddr const& dst, SockAddr const& punchee);
 

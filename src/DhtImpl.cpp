@@ -178,7 +178,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x1;
-	_dht_utversion[3] = 0x9;
+	_dht_utversion[3] = 0xA;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -873,8 +873,8 @@ DhtRequest *DhtImpl::SendPing(const DhtPeerID &peer_id) {
 	return req;
 }
 
-DhtRequest *DhtImpl::SendOpenChannel(const DhtPeerID &peer_id) {
-	unsigned char buf[120];
+DhtRequest *DhtImpl::SendOpenChannel(const DhtPeerID &peer_id, channel_info const&  info) {
+	unsigned char buf[240];
 	smart_buffer sb(buf, sizeof(buf));
 
 	DhtRequest *req = AllocateRequest(peer_id);
@@ -886,8 +886,14 @@ DhtRequest *DhtImpl::SendOpenChannel(const DhtPeerID &peer_id) {
 	sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 	sb("2:to20:")(peer_id.id);
 	sb("e1:q12:open_channel");
+
 	put_is_read_only(sb);
 	put_transaction_id(sb, Buffer((byte*)&req->tid, 4));
+
+	byte translation_id[DHT_ID_SIZE];
+	DhtIDToBytes(translation_id, info._translation_id);
+	sb("8:trans_id20:")(DHT_ID_SIZE, translation_id);
+
 	put_version(sb);
 	sb("1:y1:qe");
 	assert(sb.length() >= 0);
@@ -909,12 +915,12 @@ void DhtImpl::ping(sockaddr_storage const& node_addr, sha1_hash const& node_id)
 	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnPong, 0);
 }
 
-void DhtImpl::open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id)
+void DhtImpl::open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id, channel_info const&  info)
 {
 	DhtPeerID peer;
 	peer.addr = node_addr;
 	peer.id = node_id;
-	DhtRequest *req = SendOpenChannel(peer);
+	DhtRequest *req = SendOpenChannel(peer, info);
 	req->_pListener = new DhtRequestListener<DhtImpl>(this, &DhtImpl::OnOpenChannelResponce, 0);
 }
 
@@ -2094,9 +2100,13 @@ bool DhtImpl::ProcessQueryOpenChannel(DHTMessage &message, DhtPeerID &peerID, in
 
 	uint32_t responce = EOpenChannelUnInitialized;
 
+
+	channel_info info;
+	info._translation_id = sha1_hash(message.channel_translation_id);
+
 	if(_my_id == to_dht && message.to_id) {
 		if (_dht_events)
-			responce = _dht_events->dht_recv_open_channel(peerID.id.sha1(), peerID.addr.get_sockaddr_storage());
+			responce = _dht_events->dht_recv_open_channel(peerID.id.sha1(), peerID.addr.get_sockaddr_storage(), info);
 			assert(responce>=EOpenChannelCustom);
 	}
 	else {
@@ -2109,10 +2119,12 @@ bool DhtImpl::ProcessQueryOpenChannel(DHTMessage &message, DhtPeerID &peerID, in
 	sb("d");
 	AddIP(sb, message.id, peerID.addr);
 
-	sb("1:rd2:id20:")(DHT_ID_SIZE, _my_id_bytes)("e");
+	sb("1:rd2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 
 	assert(sizeof(responce) == 4);
-	sb("5:rcode4:")(4, (unsigned char*)&responce);
+	sb("5:rcodei%" PRId64 "e", responce);
+
+	sb("e");
 
 	put_transaction_id(sb, message.transactionID);
 	put_version(sb);
@@ -2942,8 +2954,9 @@ void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req,
 void DhtImpl::OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
 	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
+	int responce = message.responce_code;
 	if (_dht_events)
-		_dht_events->dht_recv_open_channel_responce(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags);
+		_dht_events->dht_recv_open_channel_responce(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags, responce);
 }
 
 

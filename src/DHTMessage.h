@@ -172,6 +172,8 @@ public:
 	// ping
 	byte*  to_id;
 
+	// oepn_cahnnel
+	byte* channel_translation_id;
 
 	// expected current sequence number for compare-and-swap operations
 	// if the blob we're about to overwrite has a different sequence number than
@@ -194,6 +196,7 @@ public:
 	// determined that a "put" request was made.  Otherwise it is unassigned.
 	Buffer vBuf;
 
+	int responce_code;
 
 	// reply specific components
 	BencodedDict* replyDict;

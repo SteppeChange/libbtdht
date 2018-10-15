@@ -85,6 +85,11 @@ inline const char* boot_to_string(BootState st)
 	return "Unknown";
 }
 
+struct channel_info {
+	sha1_hash _translation_id;
+};
+
+
 class DHTEvents {
 public:
 	virtual void bootstrap_state_changed(BootState state, sha1_hash new_id, sockaddr_storage const& public_address, sockaddr_storage const& local_address) = 0;
@@ -94,8 +99,8 @@ public:
 	virtual void dht_recv_pong(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
 	virtual void dht_recv_ping(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
 
-	virtual uint32_t dht_recv_open_channel(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
-	virtual void dht_recv_open_channel_responce(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag) = 0;
+	virtual uint32_t dht_recv_open_channel(sha1_hash const& from_id, sockaddr_storage const &src_addr, channel_info const& info) = 0;
+	virtual void dht_recv_open_channel_responce(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag, int responce_code) = 0;
 
 //	virtual ~DHTEvents() {};
 };
@@ -152,6 +157,7 @@ typedef void Ed25519SignCallback(unsigned char *signature,
 		const unsigned char *key);
 
 typedef void DhtPunchCallback(int punch_id, SockAddr const& source);
+
 
 
 /**
@@ -304,7 +310,7 @@ public:
 	 * node_addr - target node ip
 	 * node_id - target node DHT ID
 	 */
-	virtual void open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id) = 0;
+	virtual void open_channel(sockaddr_storage const& node_addr, sha1_hash const& node_id, channel_info const&  info) = 0;
 
 	virtual void SetId(byte new_id_bytes[20]) = 0;
 	virtual void Enable(bool enabled, int rate) = 0;

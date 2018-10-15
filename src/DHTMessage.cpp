@@ -73,6 +73,8 @@ void DHTMessage::Init()
 	punchTarget_id = 0;
 	to_id = 0;
 	punchExecutor_id = 0;
+	responce_code = 0;
+	channel_translation_id = 0;
 }
 
 /** This version of DecodeMessageData() can NOT extract a 'v' region
@@ -122,6 +124,7 @@ void DHTMessage::DecodeMessageData(BencodedDict &bDict)
 				vBuf.b = region.first;
 				signature.b = (byte*)replyDict->GetString("sig", &signature.len);
 				key.b = (byte*)replyDict->GetString("k", &key.len);
+				responce_code = replyDict->GetInt("rcode", 1);
 			}
 			else {
 				dhtMessageType = DHT_UNDEFINED_MESSAGE;
@@ -251,8 +254,7 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 	else if (strcmp(command,"open_channel") == 0) {
 		dhtCommand = DHT_QUERY_OPEN_CHANNEL;
 		to_id = (byte*)args->GetString("to", DHT_ID_SIZE);
-//		Buffer translationIdStr;
-//		translationIdStr.b = (byte*)args->GetString("...", &translationIdStr.len);
+		channel_translation_id = (byte *) bDict.GetString("trans_id", DHT_ID_SIZE);
 	}
 	else {
 		// unknown messages with either a 'target'
@@ -332,5 +334,8 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	// Warning:  If this was set, it will still point to the dictionary
 	// created by the original _bDict object
 	replyDict = src.replyDict;
+
+	responce_code = src.responce_code;
+	channel_translation_id = src.channel_translation_id;
 }
 
