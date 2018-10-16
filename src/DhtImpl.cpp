@@ -2954,9 +2954,10 @@ void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req,
 void DhtImpl::OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
 	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
-	int responce = message.responce_code;
+	int response = message.responce_code;
 	if (_dht_events)
-		_dht_events->dht_recv_open_channel_responce(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags, responce);
+	    _dht_events->dht_recv_open_channel_response(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags,
+                                                    response);
 }
 
 
