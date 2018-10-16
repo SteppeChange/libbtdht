@@ -65,12 +65,11 @@ enum BootState {
 	EBootFailed = 2,
 };
 
-
 enum OpenChannelCodes {
 	EOpenChannelUnInitialized = 0,
 	EOpenChannelWrongDestination = 1,
 	EOpenChannelInternalError = 2,
-	EOpenChannelCustom = 100 // All custom codes shold be 100+
+	EOpenChannelCustom = 100 // All custom codes should be 100+
 };
 
 inline const char* boot_to_string(BootState st)
@@ -100,9 +99,7 @@ public:
 	virtual void dht_recv_ping(sha1_hash const& from_id, sockaddr_storage const &src_addr) = 0;
 
 	virtual uint32_t dht_recv_open_channel(sha1_hash const& from_id, sockaddr_storage const &src_addr, channel_info const& info) = 0;
-	virtual void dht_recv_open_channel_responce(sha1_hash const& id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag, int responce_code) = 0;
-
-//	virtual ~DHTEvents() {};
+	virtual void dht_recv_open_channel_response(sha1_hash const &id, sockaddr_storage const &src_addr, int rtt, DhtProcessFlags flag, int response_code) = 0;
 };
 
 // callback types used in the DHT
