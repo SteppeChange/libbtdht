@@ -2953,15 +2953,17 @@ void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req,
 
 void DhtImpl::OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
+	trace_log("<<< open_channel response (%d) from :%s (id:%s)",
+			  Read32(message.transactionID.b),
+			  print_sockaddr(peer_id.addr).c_str(),
+			  format_dht_id(peer_id.id).c_str());
+
 	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
 	int response = message.responce_code;
 	if (_dht_events)
 	    _dht_events->dht_recv_open_channel_response(peer_id.id.sha1(), peer_id.addr.get_sockaddr_storage(), rtt, flags,
                                                     response);
 }
-
-
-
 
 void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 	, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
