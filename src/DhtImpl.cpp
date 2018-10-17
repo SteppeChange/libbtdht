@@ -2953,8 +2953,7 @@ void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req,
 
 void DhtImpl::OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
-	trace_log("<<< open_channel response (%d) from :%s (id:%s)",
-			  Read32(message.transactionID.b),
+	trace_log("<<< open_channel response from :%s (id:%s)",
 			  print_sockaddr(peer_id.addr).c_str(),
 			  format_dht_id(peer_id.id).c_str());
 
