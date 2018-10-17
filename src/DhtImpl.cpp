@@ -3325,7 +3325,7 @@ void DhtImpl::Tick()
 
 	if(bootstrap_complete == _dht_bootstrap)
 	{
-		if((now > 60 * 1000) &&  (now / 1000 % 30 == 0)) // every 60 sec
+		if((now > 60 * 1000) &&  (now / 1000 % 60 == 0)) // every 60 sec
 			_ip_counter->EraseOutdated(now - (60 * 1000));
 	}
 

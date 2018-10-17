@@ -56,6 +56,7 @@ void ExternalIPCounter::EraseOutdated(uint64_t valid_time_ms)
 	// fill new _ip_rating
 	_ip_rating.clear();
 	for(auto it = _voters.begin(); it != _voters.end(); ++it) {
+		debug_log("PublicIP: last 60 sec, voter: %s ip: %s", print_sockaddr(it->first).c_str(), print_sockaddr(it->second._reported_ip).c_str());
 		_ip_rating[it->second._reported_ip]++;
 	}
 
