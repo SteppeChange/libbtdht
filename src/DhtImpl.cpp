@@ -3797,7 +3797,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	candidateNode.id = id;
 	candidateNode.rtt = rtt;
 	candidateNode.num_fail = 0;
-	candidateNode.first_seen = now;
+	candidateNode.first_seen = 0;  // мы не можем тут заполнить это поле
 	candidateNode.lastContactTime = seen ? now : 0;
 	candidateNode.lastPingedTime = seen ? now : 0;
 	candidateNode.origin = origin;
@@ -6078,7 +6078,10 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 
         debug_log("Update node at bucket %s %s", format_dht_id(candidateNode.id.id).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
 
-        if(candidateNode.lastContactTime==0) // it's loaded from cashe node
+        // candidateNode.lastContactTime - заполнен если мы видим эту ноду напрямую (seen == true)
+        // p->lastContactTime - время когда мы видели эту ноду напрямую последний раз
+        // p->first_seen - время когда мы первый раз получили информацию об этой ноде, если = 0 то это значит что нода загружена из кеша
+        if(p->first_seen == 0)
             pDhtImpl->_dht_peers_count++;
         
 		p->num_fail = 0;
@@ -6089,7 +6092,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 			p->lastPingedTime = candidateNode.lastPingedTime;
 
 		if (p->first_seen == 0)
-			p->first_seen = candidateNode.first_seen;
+            p->first_seen = time(NULL);
 
 		if (p->rtt == WRONG_RTT)
 			p->rtt = candidateNode.rtt;
@@ -6119,7 +6122,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->num_fail = 0;
 		peer->lastContactTime = candidateNode.lastContactTime;
 		peer->lastPingedTime = candidateNode.lastPingedTime;
-		peer->first_seen = candidateNode.first_seen;
+        peer->first_seen = time(NULL);
 		peer->rtt = candidateNode.rtt;
 
 		memset(&peer->client, 0, sizeof(peer->client));
