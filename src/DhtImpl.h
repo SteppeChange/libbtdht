@@ -906,7 +906,6 @@ public:
 	bool InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& node, BucketListType bucketType, DhtPeer** pout, bool seen);
 	bool FindReplacementCandidate(DhtImpl* pDhtImpl, DhtPeer const& candidate, BucketListType bucketType, DhtPeer** pout);
 	bool TestForMatchingPrefix(const DhtID &id) const;
-	bool RemoveFromList(DhtImpl* pDhtImpl, const DhtID &id, BucketListType bucketType);
 };
 
 //--------------------------------------------------------------------------------

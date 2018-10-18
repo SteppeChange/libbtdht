@@ -5992,27 +5992,6 @@ bool DhtBucket::TestForMatchingPrefix(const DhtID &id) const
 	return true;
 }
 
-/**
-	Scans the indicated list and removes the entry with the matching dht id if it exists.
-*/
-bool DhtBucket::RemoveFromList(DhtImpl* pDhtImpl, const DhtID &id, BucketListType bucketType)
-{
-	DhtBucketList &bucketList = (bucketType == peer_list) ? peers : replacement_peers;
-
-	for (DhtPeer **peer = &bucketList.first(); *peer; peer=&(*peer)->next) {
-		DhtPeer *p = *peer;
-		if (id != p->id.id) continue; // if this isn't the id we're looking for, skip the remainder of loop
-
-		bucketList.unlinknext(peer);
-		pDhtImpl->_dht_peer_allocator.Free(p);
-		pDhtImpl->_dht_peers_count--;
-		assert(pDhtImpl->_dht_peers_count >= 0);
-
-		return true;
-	}
-	return false;
-}
-
 DhtPeer* DhtBucket::FindNode(SockAddr const& addr, BucketListType& list)
 {
 	for (DhtPeer **peer = &peers.first(); *peer; peer=&(*peer)->next) {
