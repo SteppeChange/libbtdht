@@ -1054,6 +1054,10 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 		if (++p->num_fail >= (p->rtt != WRONG_RTT ? FAIL_THRES : FAIL_THRES_NOCONTACT)
 			|| force_remove) {
 
+            debug_log("node %s %s was removed from replacement_peers"
+                      , print_sockaddr(p->id.addr).c_str()
+                      , format_dht_id(p->id.id).c_str());
+
 			bucket.replacement_peers.unlinknext(peer);
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
@@ -6072,10 +6076,11 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 			bucketList.listContainesAnErroredNode = true;
 		}
 
-		// Check if the peer is already in the bucket
-		if (candidateNode.id.id != p->id.id)
-			continue;
+        debug_log("Update node at bucket %s %s", format_dht_id(candidateNode.id.id).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
 
+        if(candidateNode.lastContactTime==0) // it's loaded from cashe node
+            pDhtImpl->_dht_peers_count++;
+        
 		p->num_fail = 0;
 		if (candidateNode.lastContactTime > p->lastContactTime)
 			p->lastContactTime = candidateNode.lastContactTime;
@@ -6102,7 +6107,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
         
 		if (pout) *pout = p;
 
-		pDhtImpl->is_boot_success();
+		pDhtImpl->is_boot_success(); // +1 response or +1 node (update loaded from cashe node)
 		return true;
 	}
 
@@ -6118,7 +6123,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->rtt = candidateNode.rtt;
 
 		memset(&peer->client, 0, sizeof(peer->client));
-		//debug_log("Add node %s %s", format_dht_id(peer->id.id).c_str(), print_sockaddr(peer->id.addr).c_str());
+		debug_log("Insert new node to bucket %s %s", format_dht_id(peer->id.id).c_str(), print_sockaddr(peer->id.addr).c_str());
 
 		pDhtImpl->_dht_peers_count++;
 		bucketList.enqueue(peer);
@@ -6127,7 +6132,7 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 
 		if (pout) *pout = peer;
 
-		pDhtImpl->is_boot_success();
+		pDhtImpl->is_boot_success(); // +1 response and +1 node
 
 		return true;
 	}
