@@ -903,7 +903,7 @@ public:
 
 	DhtPeer* FindNode(SockAddr const& addr, BucketListType& list);
 	DhtPeer* FindNode(const DhtID& id);
-	bool InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& node, BucketListType bucketType, DhtPeer** pout, bool seen);
+	bool InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& node, BucketListType bucketType, DhtPeer** pout, bool seen, uint origin);
 	bool FindReplacementCandidate(DhtImpl* pDhtImpl, DhtPeer const& candidate, BucketListType bucketType, DhtPeer** pout);
 	bool TestForMatchingPrefix(const DhtID &id) const;
 };
@@ -2145,7 +2145,7 @@ public:
 	void SendPunch(SockAddr const& dst, SockAddr const& punchee);
 
 	// Update the internal DHT tables with an id.
-	DhtPeer *Update(const DhtPeerID &id, uint origin, bool seen = false, int rtt = WRONG_RTT);
+	DhtPeer *UpdateDhtTable(const DhtPeerID &id, uint origin, bool seen = false, int rtt = WRONG_RTT);
 
 	// Increase the error counter for a peer
 	void UpdateError(const DhtPeerID &id, uint transaction, bool force_remove = false);

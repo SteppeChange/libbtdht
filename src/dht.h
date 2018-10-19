@@ -313,12 +313,10 @@ public:
 	virtual void Enable(bool enabled, int rate) = 0;
 
 	enum {
-		DHT_ORIGIN_UNKNOWN = 0,
-		DHT_ORIGIN_INITIAL,
-		DHT_ORIGIN_IS_PEER,
-		DHT_ORIGIN_FROM_PEER, // Introduced via FindPeers
-		DHT_ORIGIN_INCOMING, // Contacted us first
-		DHT_ORIGIN_COUNT
+		DHT_ORIGIN_FROM_PEER = 1, // Find Node results
+		DHT_ORIGIN_INCOMING_QUERY,
+		DHT_ORIGIN_RESPONSE,
+		DHT_ORIGIN_CACHE
 	};
 
 	virtual sockaddr_storage get_public_ip() const = 0;

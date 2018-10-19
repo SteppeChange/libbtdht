@@ -90,8 +90,6 @@ uint prebitcmp(const uint32 *a, const uint32 *b, size_t size) { // Simple dirty 
 	return result;
 }
 
-uint g_dht_peertype_count[IDht::DHT_ORIGIN_COUNT] = {0,0,0,0,0};
-
 #ifdef _MSC_VER
 #define PRIu32 "u"
 #endif
@@ -2298,7 +2296,7 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 		&& message.dhtCommand!=DHT_QUERY_PING
 		&& message.dhtCommand!=DHT_QUERY_PUNCH
 		&& message.dhtCommand!=DHT_QUERY_OPEN_CHANNEL) {
-		DhtPeer *peer = Update(peerID, IDht::DHT_ORIGIN_INCOMING, true);
+		DhtPeer *peer = UpdateDhtTable(peerID, IDht::DHT_ORIGIN_INCOMING_QUERY, true);
 		// Update version
 		if (peer != NULL) {
 			peer->client.from_compact(message.version.b, message.version.len);
@@ -2410,7 +2408,7 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 	DhtPeer *peer = 0;
 
 	if(!can_go_through_local_network) // ping reply can be from local node, we need to exclude this influence
-		peer = Update(peerID, IDht::DHT_ORIGIN_UNKNOWN, true, rtt);
+		peer = UpdateDhtTable(peerID, IDht::DHT_ORIGIN_RESPONSE, true, rtt);
 
 	// Update version field
 	if (peer != NULL) {
@@ -3015,7 +3013,7 @@ void DhtImpl::OnPingReply(void* &userdata, const DhtPeerID &peer_id
 				// Update the internal tables with this peer's information
 				// The contacted attribute is set to false because we haven't
 				// actually confirmed that this node exists or works yet.
-				Update(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
+				UpdateDhtTable(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
 			}
 			num_nodes--;
 		}
@@ -3417,9 +3415,8 @@ void DhtImpl::Restart() {
 	for (std::vector<DhtPeer*>::iterator i = temp.begin(), end(temp.end());
 		i != end; ++i) {
 		DhtPeer* p = *i;
-
-		Update(p->id, 0, p->rtt != WRONG_RTT, p->rtt);
-
+        // its peers from old network
+		UpdateDhtTable(p->id, DHT_ORIGIN_CACHE, p->rtt != WRONG_RTT, p->rtt);
 		_dht_peer_allocator.Free(p);
 	}
 
@@ -3658,7 +3655,7 @@ void DhtImpl::LoadState(void* user_data)
 					peer.addr.from_compact(nodes + DHT_ID_SIZE, 6);
 					nodes += sizeof(PackedDhtPeer);
 					nodes_len -= sizeof(PackedDhtPeer);
-					Update(peer, IDht::DHT_ORIGIN_UNKNOWN, false);
+					UpdateDhtTable(peer, IDht::DHT_ORIGIN_CACHE, false);
 					++num_loaded;
 				}
 			}
@@ -3747,7 +3744,7 @@ bool DhtImpl::IsBootstrap(const SockAddr& addr)
 
 // seen means that we have direct node connect (incoming request or responce)
 
-DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
+DhtPeer* DhtImpl::UpdateDhtTable(const DhtPeerID &id, uint origin, bool seen, int rtt)
 {
 
 	if (id.addr.get_port() == 0)
@@ -3803,7 +3800,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	candidateNode.origin = origin;
 
 	// try putting the node in the active node list (or updating it if it's already there)
-	bool added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::peer_list, &returnNode, seen);
+	bool added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::peer_list, &returnNode, seen, origin);
 
 	// the node was already in or added to the main bucket
 	if (added)
@@ -3817,7 +3814,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	if (bucket.TestForMatchingPrefix(_my_id)) {
 		SplitBucket(bucket_id);
 		// and retry insertion
-		return Update(id, origin, seen, rtt);
+		return UpdateDhtTable(id, origin, seen, rtt);
 	}
 
 	// Otherwise, try replacing a node in the active peers list
@@ -3841,7 +3838,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 		// The replacement candidate isn't errored, see if there is a place
 		// for it in the reserve list.
 		DhtPeer* replaceNode = NULL;
-		added = bucket.InsertOrUpdateNode(this, *returnNode, DhtBucket::replacement_list, &replaceNode, seen);
+		added = bucket.InsertOrUpdateNode(this, *returnNode, DhtBucket::replacement_list, &replaceNode, seen, origin);
 		if (added) {
 			// the peer list node is now in the replacement list, put the new
 			// node in the peer list
@@ -3858,7 +3855,7 @@ DhtPeer* DhtImpl::Update(const DhtPeerID &id, uint origin, bool seen, int rtt)
 	} else {
 		// no suitable replacement node was identified in the active peers list,
 		// see if the candidate node belongs in the replacement list
-		added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::replacement_list, &returnNode, seen);
+		added = bucket.InsertOrUpdateNode(this, candidateNode, DhtBucket::replacement_list, &returnNode, seen, origin);
 		if(!added){
 			// The candidate node was not added to the bucket; see if a node in the replacement bucket
 			// can be replaced with the candidate node to either improve the sub-prefix distribution
@@ -4424,7 +4421,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
                     debug_log("in/up (ff) (%d) %s %s",
                               Read32(message.transactionID.b), print_sockaddr(peer.addr).c_str(), format_dht_id(peer.id).c_str());
 
-					impl->Update(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
+					impl->UpdateDhtTable(peer, IDht::DHT_ORIGIN_FROM_PEER, false);
 
 					// Insert into my list...
 //					debug_log("we are looking for: target %s", format_dht_id(target));
@@ -6058,7 +6055,7 @@ DhtPeer* DhtBucket::FindNode(const DhtID& id)
 	is used on the bucket.
 */
 bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNode
-	, BucketListType bucketType, DhtPeer** pout, bool seen)
+	, BucketListType bucketType, DhtPeer** pout, bool seen, uint origin)
 {
 	DhtBucketList &bucketList = (bucketType == peer_list) ? peers : replacement_peers;
 
@@ -6081,18 +6078,17 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
         // candidateNode.lastContactTime - заполнен если мы видим эту ноду напрямую (seen == true)
         // p->lastContactTime - время когда мы видели эту ноду напрямую последний раз
         // p->first_seen - время когда мы первый раз получили информацию об этой ноде, если = 0 то это значит что нода загружена из кеша
-        if(p->first_seen == 0)
+        if(p->first_seen == 0) {
             pDhtImpl->_dht_peers_count++;
-        
+            p->first_seen = time(NULL);
+        }
+
 		p->num_fail = 0;
 		if (candidateNode.lastContactTime > p->lastContactTime)
 			p->lastContactTime = candidateNode.lastContactTime;
 
 		if (candidateNode.lastPingedTime > p->lastPingedTime)
 			p->lastPingedTime = candidateNode.lastPingedTime;
-
-		if (p->first_seen == 0)
-            p->first_seen = time(NULL);
 
 		if (p->rtt == WRONG_RTT)
 			p->rtt = candidateNode.rtt;
@@ -6122,7 +6118,10 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 		peer->num_fail = 0;
 		peer->lastContactTime = candidateNode.lastContactTime;
 		peer->lastPingedTime = candidateNode.lastPingedTime;
-        peer->first_seen = time(NULL);
+		if(origin == IDht::DHT_ORIGIN_CACHE)
+			peer->first_seen = 0;
+		else
+        	peer->first_seen = time(NULL);
 		peer->rtt = candidateNode.rtt;
 
 		memset(&peer->client, 0, sizeof(peer->client));
