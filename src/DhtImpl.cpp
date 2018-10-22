@@ -2955,9 +2955,10 @@ void DhtImpl::OnPong(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req,
 
 void DhtImpl::OnOpenChannelResponce(void*& userdata, const DhtPeerID &peer_id, DhtRequest *req, DHTMessage &message, DhtProcessFlags flags)
 {
-	trace_log("<<< open_channel response from :%s (id:%s)",
+    trace_log("<<< open_channel response from :%s (id:%s) flags: %d",
 			  print_sockaddr(peer_id.addr).c_str(),
-			  format_dht_id(peer_id.id).c_str());
+			  format_dht_id(peer_id.id).c_str(),
+              flags);
 
 	int rtt = (std::max)(int(get_milliseconds() - req->time), 1);
 	int response = message.responce_code;
@@ -6072,6 +6073,10 @@ bool DhtBucket::InsertOrUpdateNode(DhtImpl* pDhtImpl, DhtPeer const& candidateNo
 			// It only has a valid meaning immediatly after the consumer has set it.
 			bucketList.listContainesAnErroredNode = true;
 		}
+
+		// it's another node, will iterate till find 'candidateNode' node
+		if (candidateNode.id.id != p->id.id)
+			continue;
 
         debug_log("Update node at bucket %s %s", format_dht_id(candidateNode.id.id).c_str(), print_sockaddr(candidateNode.id.addr).c_str());
 
