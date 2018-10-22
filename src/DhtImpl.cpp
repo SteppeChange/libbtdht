@@ -2846,7 +2846,7 @@ bool DhtImpl::is_boot_success() {
 		&& _dht_peers_count >= BOOT_COMPLETE
 		&& _dht_request_response >= 2) {
 
-		info_log("DHTBootstrap: is_boot_success - EBootSuccess");
+		debug_log("DHTBootstrap: is_boot_success - EBootSuccess");
 		if (_dht_events)
 			_dht_events->bootstrap_state_changed(
 					EBootSuccess,
