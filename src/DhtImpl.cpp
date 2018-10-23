@@ -320,9 +320,7 @@ void DhtImpl::Enable(bool enabled, int rate)
 		_dht_bootstrap_timer = 0;
 		_dht_peers_count = 0;
 		_dht_request_response = 0;
-
-
-			_closing = !enabled;
+		_closing = !enabled;
 	}
 
 	debug_log("DHTBootstrap: Enable(enabled=%d, rate=%d) [bootstrap=%d]", enabled, rate, _dht_bootstrap);
@@ -1036,7 +1034,7 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			}
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
-			assert(_dht_peers_count >= 0);
+			//assert(_dht_peers_count >= 0);
 
 		}
 		return; // nodes in the primary list and the reserve list should be mutually exclusive
@@ -1059,7 +1057,7 @@ void DhtImpl::UpdateError(const DhtPeerID &id, uint transaction, bool force_remo
 			bucket.replacement_peers.unlinknext(peer);
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
-			assert(_dht_peers_count >= 0);
+			//assert(_dht_peers_count >= 0);
 
 		}
 		break;
@@ -2846,7 +2844,7 @@ bool DhtImpl::is_boot_success() {
 		&& _dht_peers_count >= BOOT_COMPLETE
 		&& _dht_request_response >= 2) {
 
-		debug_log("DHTBootstrap: is_boot_success - EBootSuccess");
+		//debug_log("DHTBootstrap: is_boot_success - EBootSuccess");
 		if (_dht_events)
 			_dht_events->bootstrap_state_changed(
 					EBootSuccess,
@@ -3066,7 +3064,7 @@ void DhtImpl::AddBootstrapNode(SockAddr const& addr)
 			}
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
-			assert(_dht_peers_count >= 0);
+			//assert(_dht_peers_count >= 0);
 
 			// If at the end of the peers list, bail
 			if (*peer == nullptr) {
@@ -3085,7 +3083,7 @@ void DhtImpl::AddBootstrapNode(SockAddr const& addr)
 			bucket.replacement_peers.unlinknext(peer);
 			_dht_peer_allocator.Free(p);
 			_dht_peers_count--;
-			assert(_dht_peers_count >= 0);
+			//assert(_dht_peers_count >= 0);
 
 
 			// If at the end of the replacement peers list, bail
@@ -3319,11 +3317,11 @@ void DhtImpl::Tick()
 	// Boot Process
 	if (_dht_bootstrap == not_bootstrapped) {
 		_dht_bootstrap_timer--;
-		info_log("DHTBootstrap: wait for bootstrap %d sec", _dht_bootstrap_timer);
-	}
-
-	if (_dht_bootstrap == not_bootstrapped && _dht_bootstrap_timer<=0)
+		if (_dht_bootstrap_timer<=0)
 			DoBootstrap();
+		else
+			info_log("DHTBootstrap: wait for bootstrap %d sec", _dht_bootstrap_timer);
+	}
 
 	if(bootstrap_complete == _dht_bootstrap)
 	{
