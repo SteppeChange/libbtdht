@@ -126,6 +126,7 @@ void DhtIDToBytes(byte *b, const DhtID &id);
 struct StoredPeer {
 	DhtID id;
 	time_t time;
+	int vacant;
 };
 
 class DhtPeerID
@@ -170,11 +171,10 @@ struct ClientID {
 // Note: Operator = is called due to MoveUpLast
 const int MAX_FILE_NAME_LENGTH = 128;
 struct StoredContainer {
-	StoredContainer() : file_name(NULL) {}
+	StoredContainer() {}
 	~StoredContainer() {}
 	DhtID info_hash;
 	std::vector<StoredPeer> peers;
-	char* file_name;
 
 	bool operator <(const StoredContainer& sc) const {
 		return info_hash < sc.info_hash;
@@ -996,7 +996,6 @@ class CallBackPointers
 		DhtScrapeCallback* scrapeCallback;
 		DhtVoteCallback* voteCallback;
 		DhtHashFileNameCallback* filenameCallback;
-		DhtPortCallback* portCallback;
 		DhtPutCallback* putCallback;
 		DhtPutCompletedCallback* putCompletedCallback;
 		DhtPutDataCallback* putDataCallback;
@@ -1011,7 +1010,6 @@ inline CallBackPointers::CallBackPointers()
 	, scrapeCallback(NULL)
 	, voteCallback(NULL)
 	, filenameCallback(NULL)
-	, portCallback(NULL)
 	, putCallback(NULL)
 	, putCompletedCallback(NULL)
 	, putDataCallback(NULL)
@@ -1597,15 +1595,15 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 		//    2) The elements of the enum must be alphebetical (for dht rpc protocol)
 		//    3) The last element in the enum must be "ARGUMENTER_SIZE"
 		//    4) Be sure to keep the accompaning static string list coordinated with this enum
-		enum AnnounceRPC_Arguments
+		enum AnnounceRPC_Arguments  // see AnnounceDhtProcess::ArgsNamesStr[] =
 		{
 			a_id = 0,
-			a_implied_port,
 			a_info_hash,
 			a_name,
 			a_port,
 			a_seed,
 			a_token,
+			a_vacant,
 			ARGUMENTER_SIZE  // This must be here.  This must be called ARGUMENTER_SIZE
 		};
 		static const char * const ArgsNamesStr[];
@@ -1617,15 +1615,14 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 
 	public:
 		AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const DhtID &target2
-			, time_t startTime, const CallBackPointers &consumerCallbacks);
+			, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant);
 		~AnnounceDhtProcess();
 		virtual void Start() override;
 
 		static DhtProcessBase* Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 			const DhtID &target2,
 			CallBackPointers &cbPointers,
-			cstr file_name,
-			int flags);
+			int flags, int vacant);
 
 		char const* name() const override { return "Announce"; }
 };
@@ -1862,8 +1859,8 @@ public:
 		, void* ctx = nullptr) override;
 
 	void AnnounceInfoHash(const byte *info_hash,
-		DhtAddNodesCallback *addnodes_callback, DhtPortCallback* pcb, cstr file_name,
-		void *ctx, int flags) override;
+		DhtAddNodesCallback *addnodes_callback,
+		void *ctx, int flags, int vacant) override;
 
 	void FindNode(sha1_hash const& target,
 				  find_node_success const& success_fun,
@@ -2182,7 +2179,7 @@ public:
 	void AddVoteToStore(smart_buffer& sb, DhtID& target
 		, SockAddr const& addr, int vote);
 
-	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer);
+	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant);
 
 	void ExpirePeersFromStore(time_t expire_before);
 
@@ -2261,10 +2258,9 @@ public:
 
 	void DoAnnounce(const DhtID &target,
 		DhtAddNodesCallback *callb,
-		DhtPortCallback *pcb,
-		cstr file_name,
 		void *ctx,
-		int flags);
+		int flags,
+		int vacant);
 
 	uint PingStalestInBucket(uint buck);
 

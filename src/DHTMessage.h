@@ -158,7 +158,7 @@ public:
 	int scrape;
 	bool read_only;
 	int64 sequenceNum;  // 'seq' for mutable put
-	int impliedPort;
+	int vacant;
 
 	HolePunch punchType;
 	int punchId;
@@ -180,7 +180,6 @@ public:
 	// this, the write must fail and be retried.
 	int64 cas;
 
-	Buffer filename;
 	Buffer infoHash;
 	Buffer token;
 	BencodedDict *args;
