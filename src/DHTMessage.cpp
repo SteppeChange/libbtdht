@@ -66,7 +66,6 @@ void DHTMessage::Init()
 	portNum = vote = seed = scrape = noseed = sequenceNum = 0;
 	error_code = 0;
 	error_message = NULL;
-	impliedPort = 0;
 	_bDictForUser = NULL;
 	punchType = HPUnknown;
 	punchId = 0;
@@ -75,6 +74,7 @@ void DHTMessage::Init()
 	punchExecutor_id = 0;
 	responce_code = 0;
 	channel_translation_id = 0;
+	vacant = 0;
 }
 
 /** This version of DecodeMessageData() can NOT extract a 'v' region
@@ -179,7 +179,6 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		dhtCommand = DHT_QUERY_GET_PEERS;
 		infoHash.b = (byte*)args->GetString("info_hash", &infoHash.len);
 		if (infoHash.len != DHT_ID_SIZE) _argumentsAreValid = false;
-		filename.b = (byte*)args->GetString("name", &filename.len);
 		scrape = args->GetInt("scrape", 0);
 		noseed = args->GetInt("noseed", 0);
 	}
@@ -189,9 +188,8 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		if (infoHash.len != DHT_ID_SIZE) _argumentsAreValid = false;
 		portNum = args->GetInt("port", -1);
 		token.b = (byte*)args->GetString("token", &token.len);
-		filename.b = (byte*)args->GetString("name", &filename.len);
 		seed = args->GetInt("seed", 0);
-		impliedPort = args->GetInt("implied_port", 0);
+		vacant = args->GetInt("vacant", 0);
 	}
 	else if(strcmp(command,"vote") == 0){
 		dhtCommand = DHT_QUERY_VOTE;
@@ -199,7 +197,6 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		if (target.len != DHT_ID_SIZE) _argumentsAreValid = false;
 		token.b = (byte*)args->GetString("token", &token.len);
 		vote = args->GetInt("vote", 0);
-		filename.b = (byte*)args->GetString("name", &filename.len);
 	}
 	else if (strcmp(command,"get") == 0) {
 		dhtCommand = DHT_QUERY_GET;
@@ -301,7 +298,6 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	_parseSuccessful = src._parseSuccessful;
 	type = src.type;
 	command = src.command;
-	filename = src.filename;
 	id = src.id;
 	target = src.target;
 	infoHash = src.infoHash;
@@ -309,6 +305,7 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	portNum = src.portNum;
 	vote = src.vote;
 	seed = src.seed;
+	vacant = src.vacant;
 	scrape = src.scrape;
 	args = src.args;
 	transactionID = src.transactionID;
@@ -318,7 +315,6 @@ void DHTMessage::CopyFrom(DHTMessage &src)
 	signature = src.signature;
 	region = src.region;
 	vBuf = src.vBuf;
-	impliedPort = src.impliedPort;
 	cas = src.cas;
 
 	punchType = src.punchType;

@@ -1571,7 +1571,7 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	smart_buffer sb(buf, sizeof(buf));
 
 	// read port
-	if (message.portNum < 0 && !message.impliedPort) {
+	if (message.portNum < 0) {
 		Account(DHT_INVALID_PQ_BAD_PORT, packetSize);
 		return false;
 	}
@@ -1612,12 +1612,6 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 #endif
 
 	AddPeerToStore(info_hash_id, peerID.id);
-
-#if USE_DHTFEED
-	if (_sett.collect_dht_feed) {
-		add_to_dht_feed(message.infoHash.b, (const char *)message.filename.b);
-	}
-#endif
 
 	// Send a simple reply with my ID
 	sb("d");
@@ -1667,15 +1661,6 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 
 	GenerateWriteToken(&ttoken, peerID);
 	sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
-
-	if (message.filename.len) {
-		int len = (message.filename.len>50) ? 50 : message.filename.len;
-		// the max filename length of 50 here is really to be
-		// extra conservative with the quite limited MTU space.
-		// nodes and peers are much more useful than the filename
-		// and should get the vast majority of it
-		sb("1:n%d:%.*s", len, len, message.filename.b);
-	}
 
 	bool has_values = sc != NULL && !message.scrape;
 	uint n = (std::min)((sc ? sc->size() : 0), size_t(num_peers));
@@ -4334,18 +4319,6 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 			}
 		}
 
-		// if there is a filename callback, see if a filename is in the reply
-		if (callbackPointers.filenameCallback && message.replyDict) {
-			Buffer filename;
-			filename.b = (byte*)message.replyDict->GetString("n", &filename.len);
-			if (filename.b && filename.len) {
-				byte target_bytes[DHT_ID_SIZE];
-				DhtIDToBytes(target_bytes, target);
-				callbackPointers.filenameCallback(callbackPointers.callbackContext
-					, target_bytes, filename.b);
-			}
-		}
-
 		if(values.size()){
 			byte bytes[DHT_ID_SIZE];
 			DhtIDToBytes(bytes, target);
@@ -4910,15 +4883,17 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	  2) in alpha order
 	  3) correspond to the enum they are paired with
 */
+
+
 const char* const AnnounceDhtProcess::ArgsNamesStr[] =
 {
 	"2:id",
-	"12:implied_porti1e",   // no need to set the corresponding value, it is encodede here (the i1e at the end)
 	"9:info_hash",
 	"4:name",
 	"4:port",
 	"4:seedi1e",   // no need to set the corresponding value, it is encodede here
 	"5:token",
+	"6:vacant"
 };
 
 AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
@@ -4961,10 +4936,10 @@ AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 		, port != -1 ? port : impl->_udp_socket_mgr->GetBindAddr().get_port()));
 	announceArgumenterPtr->enabled[a_port] = true;
 
-	announceArgumenterPtr->enabled[a_implied_port] = port == -1;
+	ArgumenterValueInfo& argBuf4 = announceArgumenterPtr->GetArgumenterValueInfo(a_vacant);
+	argBuf4.SetNumBytesUsed(snprintf((char*)argBuf4.GetBufferPtr(), argBuf4.GetArrayLength(), "i%de", 1));
+	announceArgumenterPtr->enabled[a_vacant] = true;
 
-	// enable the implied port argument.  This will be ignored by nodes that don't support it and used by those that do.
-	announceArgumenterPtr->enabled[a_implied_port] = true;
 }
 
 void AnnounceDhtProcess::Start()

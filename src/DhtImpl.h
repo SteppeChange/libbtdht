@@ -1597,15 +1597,15 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 		//    2) The elements of the enum must be alphebetical (for dht rpc protocol)
 		//    3) The last element in the enum must be "ARGUMENTER_SIZE"
 		//    4) Be sure to keep the accompaning static string list coordinated with this enum
-		enum AnnounceRPC_Arguments
+		enum AnnounceRPC_Arguments  // see AnnounceDhtProcess::ArgsNamesStr[] =
 		{
 			a_id = 0,
-			a_implied_port,
 			a_info_hash,
 			a_name,
 			a_port,
 			a_seed,
 			a_token,
+			a_vacant,
 			ARGUMENTER_SIZE  // This must be here.  This must be called ARGUMENTER_SIZE
 		};
 		static const char * const ArgsNamesStr[];
