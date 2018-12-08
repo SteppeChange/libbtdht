@@ -126,6 +126,7 @@ void DhtIDToBytes(byte *b, const DhtID &id);
 struct StoredPeer {
 	DhtID id;
 	time_t time;
+	int vacant;
 };
 
 class DhtPeerID
@@ -170,11 +171,10 @@ struct ClientID {
 // Note: Operator = is called due to MoveUpLast
 const int MAX_FILE_NAME_LENGTH = 128;
 struct StoredContainer {
-	StoredContainer() : file_name(NULL) {}
+	StoredContainer() {}
 	~StoredContainer() {}
 	DhtID info_hash;
 	std::vector<StoredPeer> peers;
-	char* file_name;
 
 	bool operator <(const StoredContainer& sc) const {
 		return info_hash < sc.info_hash;
@@ -2182,7 +2182,7 @@ public:
 	void AddVoteToStore(smart_buffer& sb, DhtID& target
 		, SockAddr const& addr, int vote);
 
-	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer);
+	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant);
 
 	void ExpirePeersFromStore(time_t expire_before);
 

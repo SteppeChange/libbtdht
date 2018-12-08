@@ -230,9 +230,6 @@ DhtImpl::~DhtImpl()
 		}
 		_dht_bucket_allocator.Free(_buckets[i]);
 	}
-	for (auto& peer: _peer_store) {
-		free(peer.file_name);
-	}
 }
 
 void DhtImpl::SetVersion(char const* client, int major, int minor)
@@ -733,7 +730,7 @@ void DhtImpl::DumpTracked()
 	trace_log("List of tracked torrents:");
 	for(uint i=0; i!=_peer_store.size(); i++) {
 		StoredContainer &sc = _peer_store[i];
-		trace_log("%d: %s/%s: %d peers", i, format_dht_id(sc.info_hash).c_str(), sc.file_name?sc.file_name:"", sc.peers.size());
+		trace_log("%d: %d peers", i, format_dht_id(sc.info_hash).c_str(), sc.peers.size());
 	}
 	trace_log("Total peers: %d", _peers_tracked);
 	trace_log("Total torrents: %d", _peer_store.size());
@@ -1272,10 +1269,6 @@ std::vector<StoredPeer> *DhtImpl::GetPeersFromStore(const DhtID &info_hash, str*
 
 	StoredContainer *sc = &(*it);
 
-	if (sc->file_name && sc->file_name[0] != '\0') {
-		*file_name = sc->file_name;
-	}
-
 	if (sc->peers.size() == 0)
 		return NULL;
 
@@ -1341,7 +1334,7 @@ void DhtImpl::AddVoteToStore(smart_buffer& sb, DhtID& target
 			vc->num_votes[2], vc->num_votes[3], vc->num_votes[4]);
 }
 
-void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer)
+void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant)
 {
 
 	std::vector<StoredContainer>::iterator it = GetStorageForID(info_hash);
@@ -1357,7 +1350,6 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 
 		sc = &(*_peer_store.insert(it, StoredContainer()));
 		sc->info_hash = info_hash;
-		sc->file_name = (char*)malloc(MAX_FILE_NAME_LENGTH);
 		info_log("Storage: Hash %s is added to the storage",  format_dht_id(sc->info_hash).c_str());
 	}
 
@@ -1376,6 +1368,7 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 	StoredPeer sp;
 	sp.time = time(NULL);
 	sp.id = announsed_peer;
+	sp.vacant = vacant;
 	sc->peers.push_back(sp);
 	info_log("Storage: Hash %s announcer %s is added",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
 	_peers_tracked++;
@@ -1395,7 +1388,6 @@ void DhtImpl::ExpirePeersFromStore(time_t expire_before)
 			}
 		}
 		if (sp.size() == 0) {
-			free(it->file_name);
 			info_log("Storage: Hash %s expired, removed from storage",  format_dht_id(it->info_hash).c_str());
 			it = _peer_store.erase(it);
 		} else {
@@ -1611,7 +1603,7 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	}
 #endif
 
-	AddPeerToStore(info_hash_id, peerID.id);
+	AddPeerToStore(info_hash_id, peerID.id, message.vacant);
 
 	// Send a simple reply with my ID
 	sb("d");
@@ -1623,6 +1615,33 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 
 	assert(sb.length() >= 0);
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
+}
+
+byte hex_to_byte(unsigned char c) {
+	byte val = 0;
+	if ('0' <= c && c <= '9')
+		val = c - '0';
+	else if ('A' <= c && c <= 'F')
+		val = 10 + (c - 'A');
+	else
+		assert(false);
+	return val;
+}
+
+void string_to_sha1_hash(std::string const &src, sha1_hash& dest) {
+	if (!src.empty()) {
+		assert(src.length() == SHA1_DIGESTSIZE * 2);
+		char const *p = src.c_str();
+		unsigned char *pp = dest.value;
+		for (int i = 0; i < SHA1_DIGESTSIZE; ++i) {
+			byte h = hex_to_byte(*p++);
+			byte l = hex_to_byte(*p++);
+			byte val = (h << 4) + l;
+			*pp++ = val;
+		}
+	} else {
+		memset(dest.value, 0, SHA1_DIGESTSIZE);
+	}
 }
 
 bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
@@ -1656,14 +1675,20 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	AddIP(sb, message.id, peerID.addr);
 	sb("1:rd");
 
-	const std::vector<StoredPeer> *sc = GetPeersFromStore(info_hash_id
-			, &file_name, num_peers);
+
+#ifdef TEST_ANNOUNCE
+	sha1_hash target;
+	string_to_sha1_hash("622EDB64A857C271F110090E694537759D2CAE7F", target);
+	info_hash_id = target;
+#endif
+
+	const std::vector<StoredPeer> *peers = GetPeersFromStore(info_hash_id, &file_name, num_peers);
 
 	GenerateWriteToken(&ttoken, peerID);
 	sb("2:id20:")(DHT_ID_SIZE, _my_id_bytes);
 
-	bool has_values = sc != NULL && !message.scrape;
-	uint n = (std::min)((sc ? sc->size() : 0), size_t(num_peers));
+	bool has_values = peers != NULL && !message.scrape;
+	uint n = std::min((peers ? peers->size() : 0), size_t(num_peers));
 	int size =
 		(sb.length()) // written so far
 		+ (has_values ? (10 + n * 8) : 0) // the values
@@ -1678,7 +1703,6 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 			 hexify(ttoken.value).c_str(),
 			 print_sockaddr(peerID.addr).c_str());
 
-
 	BuildFindNodesPacket(sb, info_hash_id, mtu - size, peerID.addr);
 	sb("5:token20:")(DHT_ID_SIZE, ttoken.value);
 
@@ -1688,11 +1712,32 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 		assert(sb.length() + 10 + 8 * n <= mtu);
 		if (n > 0) {
 			sb("6:valuesl");
-			for(uint i=0; i!=n; i++) {
-				DhtID const& sid = (*sc)[i].id;
-                debug_log("get_peers(incoming) response: found %s", format_dht_id(sid).c_str());
-				sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
+
+			int num_found = 0;
+			// get all vacant peers
+			for(uint i=0; i<peers->size() && num_found<n; i++) {
+				if((*peers)[i].vacant>0) {
+					DhtID const &sid = (*peers)[i].id;
+					uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
+					debug_log("get_peers(incoming) vacant response: found %s", format_dht_id(sid).c_str());
+					sb("20:")(sid);
+					sb("4:")(4, (unsigned char const*)&time_point);
+					//sb("i%de", time_point);
+					num_found++;
+				}
 			}
+			// get remain
+			for(uint i=0; i<peers->size() && num_found<n; i++) {
+				if((*peers)[i].vacant==0) {
+					DhtID const &sid = (*peers)[i].id;
+					uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
+					debug_log("get_peers(incoming) response: found %s", format_dht_id(sid).c_str());
+					sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
+					sb("4:")(4, (unsigned char const*)&time_point);
+					num_found++;
+				}
+			}
+
 			sb("e");
 		}
 	}
@@ -2318,8 +2363,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 			  format_dht_id(peerID.id).c_str(),
 			  name.c_str());
 
-//	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
-//		int debug = 0;
+	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
+		int debug = 0;
 
 	if (!req) {
 		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
@@ -2335,19 +2380,25 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 		}
 
         // for bootstrup its wrong, see // _temp_nodes[c].id.id[4] = rand();
+
+
 		if (!IsBootstrap(req->peer.addr) && !(req->peer.id == peerID.id)) {
 			warnings_log("Response ID != Request ID %s %s",
                       format_dht_id(peerID.id).c_str(),
                       format_dht_id(req->peer.id).c_str());
 
+#ifndef TEST_ANNOUNCE
 			UnlinkRequest(req);
 			req->_pListener->Callback(req->peer, req, message, ID_MISMATCH);
 			delete req->_pListener;
 			// Cleanup
 			delete req;
 			return true;
+#endif
 		}
-        
+
+
+
 	} else {
 		// error messages do not have a peer id field, so have to infer from request
 		peerID.id = req->peer.id;
@@ -4209,6 +4260,7 @@ void DhtLookupScheduler::IssueQuery(int nodeIndex)
         error_log("IssueQuery fails, unresolved peer addr");
         return;
     }
+
 	DhtRequest *req = impl->AllocateRequest(resNodeInfo.id);
 	DhtSendRPC(resNodeInfo, req->tid);
 	req->_pListener = new DhtRequestListener<DhtProcessBase>(this, &DhtProcessBase::OnReply);
@@ -4304,6 +4356,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 			nodes.b = (byte*)message.replyDict->GetString("nodes", &nodes.len);
 			info_hash.b = (byte*)message.replyDict->GetString("info_hash", &info_hash.len);
 			valuesList = message.replyDict->GetList("values");
+
 		} else {
 			nodes.b = NULL;
 			info_hash.b = NULL;
@@ -4315,7 +4368,14 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				b.b = (byte*)valuesList->GetString(i, &b.len);
 				if (!b.b)
 					continue;
-				values.push_back(b);
+				if(b.len==DHT_ID_SIZE)
+					values.push_back(b);
+				if(b.len==4)
+				{ // time_t sb("4:")(4, (unsigned char const*)&time_point);
+					uint32_t val;
+					memcpy(&val, b.b, 4);
+					val = 0;
+				}
 			}
 		}
 
@@ -4864,6 +4924,12 @@ void GetPeersDhtProcess::DhtSendRPC(const DhtFindNodeEntry &nodeInfo
 	if (impl->_lookup_log)
 		fprintf(impl->_lookup_log, "[%u] [%u] [%s]: GET-PEERS -> %s\n"
 			, uint(get_milliseconds()), process_id(), name(), print_sockaddr(addr).c_str());
+#endif
+
+
+#ifdef TEST_ANNOUNCE
+	/// ***** send to self
+	addr = impl->_udp_socket_mgr->GetBindAddr();
 #endif
 
 	impl->SendTo(addr, buf, sb.length());
