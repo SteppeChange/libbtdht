@@ -1722,7 +1722,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 					debug_log("get_peers(incoming) vacant response: found %s", format_dht_id(sid).c_str());
 					sb("20:")(sid);
 					sb("4:")(4, (unsigned char const*)&time_point);
-					//sb("i%de", time_point);
+					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
 					num_found++;
 				}
 			}
@@ -1734,6 +1734,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 					debug_log("get_peers(incoming) response: found %s", format_dht_id(sid).c_str());
 					sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
 					sb("4:")(4, (unsigned char const*)&time_point);
+					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
 					num_found++;
 				}
 			}
@@ -2363,8 +2364,8 @@ bool DhtImpl::ProcessResponse(DhtPeerID& peerID, DHTMessage &message, int pkt_si
 			  format_dht_id(peerID.id).c_str(),
 			  name.c_str());
 
-	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
-		int debug = 0;
+//	if(req && std::string(req->_pListener->name()) == std::string("GetPeers"))
+//		int debug = 0;
 
 	if (!req) {
 		error_log("Invalid transaction ID tid:%d", Read32(message.transactionID.b));
@@ -2757,10 +2758,9 @@ void DhtImpl::ResolveName(sha1_hash const& target, DhtGetPeersCallback* callb
 */
 void DhtImpl::DoAnnounce(const DhtID &target,
 	DhtAddNodesCallback *callb,
-	DhtPortCallback *pcb,
-	cstr file_name,
 	void *ctx,
-	int flags)
+	int flags,
+	int vacant)
 {
 	debug_log("DoAnnounce: hash:%s owner(me):%s", format_dht_id(target).c_str(), format_dht_id(_my_id).c_str());
 
@@ -2780,7 +2780,6 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 	CallBackPointers cbPtrs;
 	cbPtrs.addnodesCallback = callb;
 	cbPtrs.callbackContext = ctx;
-	cbPtrs.portCallback = pcb;
 
 	DhtProcessBase* getPeersProc = GetPeersDhtProcess::Create(this, *dpm, target
 		, cbPtrs, flags, maxOutstanding);
@@ -2789,7 +2788,7 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 
 	if ((flags & announce_only_get) == 0) {
 		DhtProcessBase* announceProc = AnnounceDhtProcess::Create(this, *dpm, target
-			, cbPtrs, file_name, flags);
+			, cbPtrs, flags, vacant);
 		dpm->AddDhtProcess(announceProc); // add announce second
 	}
 
@@ -3252,15 +3251,13 @@ void DhtImpl::ImmutableGet(sha1_hash target, DhtGetCallback* cb
 void DhtImpl::AnnounceInfoHash(
 	const byte *info_hash,
 	DhtAddNodesCallback *addnodes_callback,
-	DhtPortCallback* pcb,
-	cstr file_name,
 	void *ctx,
-	int flags)
+	int flags,
+	int vacant)
 {
 	DhtID id;
 	CopyBytesToDhtID(id, info_hash);
-	DoAnnounce(id, addnodes_callback,
-		pcb, file_name, ctx, flags);
+	DoAnnounce(id, addnodes_callback, ctx, flags, vacant);
 }
 
 void DhtImpl::SetRate(int bytes_per_second)
@@ -4349,7 +4346,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		// extract the possible reply arguments
 		Buffer nodes;
 		Buffer info_hash;
-		std::vector<Buffer> values;
+		announcers_list values;
 
 		BencodedList* valuesList = NULL;
 		if (message.replyDict) {
@@ -4369,12 +4366,24 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 				if (!b.b)
 					continue;
 				if(b.len==DHT_ID_SIZE)
-					values.push_back(b);
-				if(b.len==4)
+				{ // sb("20:")(sid);
+					announce_info info;
+					DhtID val;
+					CopyBytesToDhtID(val, b.b);
+					info._announcer_id = val.sha1();
+					values.push_back(info);
+				}
+				else if(b.len==4)
 				{ // time_t sb("4:")(4, (unsigned char const*)&time_point);
 					uint32_t val;
 					memcpy(&val, b.b, 4);
-					val = 0;
+					values.back()._time_of_announce = val;
+				}
+				else if(b.len==2)
+				{ // sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
+					uint16_t val;
+					memcpy(&val, b.b, 2);
+					values.back()._vacant = val;
 				}
 			}
 		}
@@ -4385,35 +4394,10 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 
 			int peers_size = values.size();
 			DHTPackedPeer *peers = (DHTPackedPeer*)malloc(sizeof(DHTPackedPeer) * peers_size);
-			std::list<sha1_hash> hpeers;
 			uint numpeer = 0;
-			for(uint i=0; i!=values.size(); i++) {
-				int len = values[i].len;
-				byte* s = values[i].b;
 
-				if (len == 6) {
-					// libtorrrent / uTorrent style peer
-					peers[numpeer++] = *(DHTPackedPeer*)s;
-				} else if (len == 20) {
-					// steppechage
-					DhtID ann_id;
-					CopyBytesToDhtID(ann_id, s);
-					hpeers.push_back(ann_id.sha1());
-				} else if ((len % 6) == 0) {
-
-					// we need more space
-					size_t peers2_size = peers_size + ((len / 6) - 1);
-					peers = (DHTPackedPeer*)realloc(peers, sizeof(DHTPackedPeer) * peers2_size);
-					peers_size = peers2_size;
-
-					// parse mainline dht style peer list
-					for (uint pos = 0; pos < len; pos += 6) {
-						peers[numpeer++] = *(DHTPackedPeer*)(s + pos);
-					}
-				}
-			}
 			if(callbackPointers.getPeersCallback)
-				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, hpeers, false);
+				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, values, false);
 
 			if (numpeer != 0 && callbackPointers.addnodesCallback != NULL){
 				callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, (byte*)peers, numpeer, false);
@@ -4819,7 +4803,7 @@ void GetPeersDhtProcess::CompleteThisProcess()
 	}*/
 
 	if(callbackPointers.getPeersCallback)
-		callbackPointers.getPeersCallback(callbackPointers.callbackContext, target.sha1().value, std::list<sha1_hash>(), true);
+		callbackPointers.getPeersCallback(callbackPointers.callbackContext, target.sha1().value, announcers_list(), true);
 
 	DhtProcessBase::CompleteThisProcess();
 }
@@ -4963,7 +4947,7 @@ const char* const AnnounceDhtProcess::ArgsNamesStr[] =
 };
 
 AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
-	, const DhtID &target2, time_t startTime, const CallBackPointers &consumerCallbacks)
+	, const DhtID &target2, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant)
 	: DhtBroadcastScheduler(pDhtImpl,dpm,target2,startTime,consumerCallbacks)
 {
 	byte infoHashBytes[DHT_ID_SIZE];
@@ -4995,15 +4979,13 @@ AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 	argBuf2.SetNumBytesUsed(DHT_ID_SIZE + 3);
 	announceArgumenterPtr->enabled[a_info_hash] = true;
 
-	int port = consumerCallbacks.portCallback ? consumerCallbacks.portCallback() : -1;
-
 	ArgumenterValueInfo& argBuf3 = announceArgumenterPtr->GetArgumenterValueInfo(a_port);
 	argBuf3.SetNumBytesUsed(snprintf((char*)argBuf3.GetBufferPtr(), argBuf3.GetArrayLength(), "i%de"
-		, port != -1 ? port : impl->_udp_socket_mgr->GetBindAddr().get_port()));
+		, impl->_udp_socket_mgr->GetBindAddr().get_port()));
 	announceArgumenterPtr->enabled[a_port] = true;
 
 	ArgumenterValueInfo& argBuf4 = announceArgumenterPtr->GetArgumenterValueInfo(a_vacant);
-	argBuf4.SetNumBytesUsed(snprintf((char*)argBuf4.GetBufferPtr(), argBuf4.GetArrayLength(), "i%de", 1));
+	argBuf4.SetNumBytesUsed(snprintf((char*)argBuf4.GetBufferPtr(), argBuf4.GetArrayLength(), "i%de", vacant));
 	announceArgumenterPtr->enabled[a_vacant] = true;
 
 }
@@ -5022,22 +5004,10 @@ AnnounceDhtProcess::~AnnounceDhtProcess()
 DhtProcessBase* AnnounceDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 	const DhtID &target2,
 	CallBackPointers &cbPointers,
-	cstr file_name, int flags)
+	int flags, int vacant)
 {
-	AnnounceDhtProcess* process = new AnnounceDhtProcess(pDhtImpl, dpm, target2, time(NULL), cbPointers);
+	AnnounceDhtProcess* process = new AnnounceDhtProcess(pDhtImpl, dpm, target2, time(NULL), cbPointers, vacant);
 
-	if(file_name){
-		size_t len = strlen(file_name);
-		if(len){
-			// The file name may (and mostly will) be larger than the 32 bytes of statically
-			// allocated buffer in ArgumenterValueInfo.  So use SetValueBytes() which will
-			// dynamically allocate a larger buffer if needed.
-			char buf[1024];
-			process->announceArgumenterPtr->enabled[a_name] =  true;
-			int numChars = snprintf((char*)buf, 1024, "%lu:%s", len, file_name);
-			process->announceArgumenterPtr->SetValueBytes(a_name, (byte*)buf, numChars);
-		}
-	}
 	process->announceArgumenterPtr->enabled[a_seed] = flags & IDht::announce_seed;
 	return process;
 }

@@ -996,7 +996,6 @@ class CallBackPointers
 		DhtScrapeCallback* scrapeCallback;
 		DhtVoteCallback* voteCallback;
 		DhtHashFileNameCallback* filenameCallback;
-		DhtPortCallback* portCallback;
 		DhtPutCallback* putCallback;
 		DhtPutCompletedCallback* putCompletedCallback;
 		DhtPutDataCallback* putDataCallback;
@@ -1011,7 +1010,6 @@ inline CallBackPointers::CallBackPointers()
 	, scrapeCallback(NULL)
 	, voteCallback(NULL)
 	, filenameCallback(NULL)
-	, portCallback(NULL)
 	, putCallback(NULL)
 	, putCompletedCallback(NULL)
 	, putDataCallback(NULL)
@@ -1617,15 +1615,14 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 
 	public:
 		AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const DhtID &target2
-			, time_t startTime, const CallBackPointers &consumerCallbacks);
+			, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant);
 		~AnnounceDhtProcess();
 		virtual void Start() override;
 
 		static DhtProcessBase* Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 			const DhtID &target2,
 			CallBackPointers &cbPointers,
-			cstr file_name,
-			int flags);
+			int flags, int vacant);
 
 		char const* name() const override { return "Announce"; }
 };
@@ -1862,8 +1859,8 @@ public:
 		, void* ctx = nullptr) override;
 
 	void AnnounceInfoHash(const byte *info_hash,
-		DhtAddNodesCallback *addnodes_callback, DhtPortCallback* pcb, cstr file_name,
-		void *ctx, int flags) override;
+		DhtAddNodesCallback *addnodes_callback,
+		void *ctx, int flags, int vacant) override;
 
 	void FindNode(sha1_hash const& target,
 				  find_node_success const& success_fun,
@@ -2261,10 +2258,9 @@ public:
 
 	void DoAnnounce(const DhtID &target,
 		DhtAddNodesCallback *callb,
-		DhtPortCallback *pcb,
-		cstr file_name,
 		void *ctx,
-		int flags);
+		int flags,
+		int vacant);
 
 	uint PingStalestInBucket(uint buck);
 

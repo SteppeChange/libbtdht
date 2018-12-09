@@ -88,6 +88,16 @@ struct channel_info {
 	sha1_hash _translation_id;
 };
 
+struct announce_info {
+	announce_info() : _time_of_announce(0), _vacant(0)
+	{
+	}
+	sha1_hash _announcer_id;
+	time_t _time_of_announce;
+	uint16_t _vacant;
+};
+
+typedef std::list<announce_info> announcers_list;
 
 class DHTEvents {
 public:
@@ -106,7 +116,7 @@ public:
 typedef void DhtVoteCallback(void *ctx, const byte *target, int const* votes);
 typedef void DhtHashFileNameCallback(void *ctx, const byte *info_hash, const byte *file_name);
 typedef void DhtAddNodesCallback(void *ctx, const byte *info_hash, const byte *peers, uint num_peers, bool complete_process);
-typedef void DhtGetPeersCallback(void *ctx, const byte *info_hash, std::list<sha1_hash> const& peers, bool complete_process);
+typedef void DhtGetPeersCallback(void *ctx, const byte *info_hash, announcers_list const& peers, bool complete_process);
 typedef void DhtAddNodeResponseCallback(void*& userdata, bool is_response, SockAddr const& addr);
 typedef void DhtScrapeCallback(void *ctx, const byte *target, int downloaders, int seeds);
 typedef int DhtPutCallback(void * ctx, std::vector<char>& buffer, int64& seq, SockAddr src);
@@ -126,8 +136,6 @@ struct DhtLogCallbacks {
 	DhtLogLevelCallback* level;
 };
 
-
-
 // asks the client to save the DHT state
 typedef void DhtSaveCallback(void* user_data, const byte* buf, int len);
 
@@ -136,10 +144,6 @@ typedef void DhtLoadCallback(void* user_data, BencEntity* ent);
 
 // called for all incoming and outgoing packets
 typedef void DhtPacketCallback(void const* buffer, size_t len, bool incoming);
-
-// should return the listen port to use for announce_peer. Return -1 to
-// use the implied_port feature (where the port is the same as for the DHT)
-typedef int DhtPortCallback();
 
 // allows the dht client to define what SHA-1 implementation to use
 typedef sha1_hash DhtSHACallback(byte const* buf, int len);
@@ -228,10 +232,9 @@ public:
 	virtual void AnnounceInfoHash(
 		const byte *info_hash,
 		DhtAddNodesCallback *addnodes_callback,
-		DhtPortCallback* pcb,
-		cstr file_name,
 		void *ctx,
-		int flags = 0) = 0;
+		int flags,
+		int vacant) = 0;
 
 	/* get_peers classic wrapper
 	 * There is one diff between classic and ResolveName: classic get_peers returns ip:port,  ResolveName returns dht_id
@@ -450,7 +453,5 @@ inline sockaddr_storage ipv4ipv6_resolve(sockaddr_storage const& peer, int famil
 		
 
 }
-
-
 #endif //__DHT_H__
 
