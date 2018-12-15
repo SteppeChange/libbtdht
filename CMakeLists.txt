@@ -56,7 +56,7 @@ add_library(btdht ${SOURCE_FILES})
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-target_compile_options(btdht PUBLIC -c -MD -g -pipe -Wall -O0 -D_UNICODE)
+target_compile_options(btdht PUBLIC -c -MD -g -pipe -Wall -Wno-unknown-pragmas -Wformat-security -O0 -D_UNICODE)
 
 cmake_policy(SET CMP0003 NEW) ## Libraries linked via full path no longer produce linker search paths.
 
