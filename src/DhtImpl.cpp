@@ -1358,6 +1358,8 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 		StoredPeer &sp = sc->peers[j];
 		if (announsed_peer == sp.id) {
 			sp.time = time(NULL);
+			sp.vacant = vacant;
+			info_log("Storage: Hash %s announcer %s is updated",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
 			return;
 		}
 	}
@@ -1726,6 +1728,15 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 					num_found++;
 				}
 			}
+
+			int vacant_peers_stat = 0;
+			for(uint i=0; i<peers->size(); i++) {
+				if ((*peers)[i].vacant > 0)
+					vacant_peers_stat++;
+			}
+			debug_log("get_peers_stats: info_hash='%s' vacant=%d total=%d", format_dht_id(info_hash_id).c_str(), vacant_peers_stat, peers->size());;
+
+
 			// get remain
 			for(uint i=0; i<peers->size() && num_found<n; i++) {
 				if((*peers)[i].vacant==0) {
@@ -4360,6 +4371,7 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		}
 
 		if (valuesList) {
+//			int debug  = valuesList->GetCount();
 			for(uint i=0; i!=valuesList->GetCount(); i++) {
 				Buffer b;
 				b.b = (byte*)valuesList->GetString(i, &b.len);
