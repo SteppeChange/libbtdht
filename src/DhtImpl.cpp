@@ -52,7 +52,7 @@ const int CAS_MISMATCH = 301;
 const int LOWER_SEQ = 302;
 
 
-const int BOOT_COMPLETE = 4; // TO DO must be 8
+const int BOOT_COMPLETE = 2; // TO DO must be 8
 
 bool DhtVerifyHardenedID(const SockAddr& addr, byte const* node_id);
 void DhtCalculateHardenedID(const SockAddr& addr, byte *node_id);
