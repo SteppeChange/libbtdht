@@ -2222,8 +2222,6 @@ public:
 			int packetSize);
 	bool ProcessQueryAnnouncePeer(DHTMessage &message, DhtPeerID &peerID,
 			int packetSize);
-	bool ProcessQueryVote(DHTMessage &message, DhtPeerID &peerID, int packetSize);
-	bool ProcessQueryPut(DHTMessage &message, DhtPeerID &peerID, int packetSize);
 	bool ProcessQueryGet(DHTMessage &message, DhtPeerID &peerID, int packetSize);
 
 	bool ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSize);

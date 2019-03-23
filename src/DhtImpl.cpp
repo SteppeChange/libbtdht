@@ -45,9 +45,6 @@ limitations under the License.
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 const char MUTABLE_PAYLOAD_FORMAT[] = "3:seqi%" PRId64 "e1:v";
 
-const int MESSAGE_TOO_BIG = 205;
-const int INVALID_SIGNATURE = 206;
-const int SALT_TOO_BIG = 207;
 const int CAS_MISMATCH = 301;
 const int LOWER_SEQ = 302;
 
@@ -1835,138 +1832,6 @@ void DhtImpl::send_put_response(smart_buffer& sb, Buffer& transaction_id,
 	AccountAndSend(peerID, sb.begin(), sb.length(), packetSize);
 }
 
-bool DhtImpl::ProcessQueryPut(DHTMessage &message, DhtPeerID &peerID,
-		int packetSize) {
-	unsigned char buf[8192];
-	smart_buffer sb(buf, sizeof(buf));
-
-	// read the token
-	if (!message.token.len) {
-		error_log("Bad write token");
-		Account(DHT_INVALID_PQ_BAD_WRITE_TOKEN, packetSize);
-		return false;
-	}
-
-	// validate the token
-	if (!ValidateWriteToken(peerID, message.token.b)) {
-		Account(DHT_INVALID_PQ_INVALID_TOKEN, packetSize);
-		return false;
-	}
-
-	// TODO: v6
-	assert(peerID.addr.isv4());
-	if (!peerID.addr.isv4()) {
-		Account(DHT_INVALID_PQ_IPV6, packetSize);
-		return true;
-	}
-
-	// make sure v is not larger than 1000 bytes or smaller than is possible for a bencoded element
-	if(message.vBuf.len < 2 || message.vBuf.len > 1000)
-	{	// v is too big or small
-		Account(DHT_INVALID_PQ_BAD_PUT_BAD_V_SIZE, packetSize);
-		send_put_response(sb, message.transactionID, packetSize, peerID,
-				MESSAGE_TOO_BIG, "Message exceeds maximum size.");
-		return true;
-	}
-
-	if(message.key.len && message.sequenceNum && message.signature.len)
-	{ // mutable put
-
-		if(message.key.len != DHT_KEY_SIZE || message.signature.len != DHT_SIG_SIZE) {
-			Account(DHT_INVALID_PQ_BAD_PUT_KEY, packetSize);
-			return true;
-		}
-		if (message.salt.len > (size_t)DHT_MAX_SALT_SIZE)
-		{
-			Account(DHT_INVALID_PQ_BAD_PUT_SALT, packetSize);
-			send_put_response(sb, message.transactionID, packetSize, peerID,
-					SALT_TOO_BIG, "Salt too big.");
-			return true;
-		}
-		if (!Verify(message.signature.b, message.vBuf.b, message.vBuf.len
-				, message.salt.b, message.salt.len, message.key.b, message.sequenceNum)) {
-			Account(DHT_INVALID_PQ_BAD_PUT_SIGNATURE, packetSize);
-			send_put_response(sb, message.transactionID, packetSize, peerID,
-					INVALID_SIGNATURE, "Invalid message signature.");
-			return true;
-		}
-
-		// make a hash of the address for the DataStores to use to record usage of an item
-		const sha1_hash addrHashPtr = _sha_callback((const byte*)peerID.addr.get_hash_key(), peerID.addr.get_hash_key_len());
-
-		// at this point, the put request has been verified
-		// store the data under a sha1 hash of the entire public key and optional salt
-		DhtID targetDhtID = MutableTarget(message.key.b, message.salt.b, message.salt.len);
-		PairContainerBase<MutableData>* containerPtr = NULL;
-		if (_mutablePutStore.AddKeyToList(addrHashPtr, targetDhtID, &containerPtr, time(NULL)) == NEW_ITEM) {
-			// this is new to the store, set the sequence num, copy the 'v' bytes, store the signature and key
-			containerPtr->value.sequenceNum = message.sequenceNum;
-			containerPtr->value.v.assign(message.vBuf.b, message.vBuf.b + message.vBuf.len);
-			// store the signature
-			memcpy(containerPtr->value.signature, message.signature.b, message.signature.len);
-			// store the key
-			memcpy(containerPtr->value.key, message.key.b, message.key.len);
-
-			byte to_hash[1040]; // 1000 byte message + seq + formatting
-			int written = snprintf(reinterpret_cast<char*>(to_hash), 1040,
-				MUTABLE_PAYLOAD_FORMAT, message.sequenceNum);
-			assert((written + message.vBuf.len) <= 1040);
-			memcpy(to_hash + written, message.vBuf.b, message.vBuf.len);
-
-			// update the time
-			containerPtr->lastUse = time(NULL);
-		} else {
-			// check that the sequence num is larger (newer) than what is currently in
-			// the store, and update 'v' bytes, sequence num, and signature
-			// No need to update the key here, we already have it and it is not changing.
-			if (message.sequenceNum >= containerPtr->value.sequenceNum) {
-
-				if (message.cas != 0
-					&& message.cas != containerPtr->value.sequenceNum) {
-
-					Account(DHT_INVALID_PQ_BAD_PUT_CAS, packetSize);
-					send_put_response(sb, message.transactionID, packetSize, peerID,
-							CAS_MISMATCH, "Invalid CAS.");
-
-					return true;
-				} else {
-					if (message.sequenceNum > containerPtr->value.sequenceNum) {
-						// update the sequence number
-						containerPtr->value.sequenceNum = message.sequenceNum;
-						// update the value stored
-						containerPtr->value.v.assign(message.vBuf.b, message.vBuf.b + message.vBuf.len);
-						// update the signature
-						memcpy(containerPtr->value.signature, message.signature.b, message.signature.len);
-					}
-					// update the last time accessed
-					containerPtr->lastUse = time(NULL);
-				}
-			} else {
-					send_put_response(sb, message.transactionID, packetSize, peerID,
-							LOWER_SEQ, "Replacement sequence number is lower.");
-					return true;
-			}
-		}
-	} else {
-		// immutable put
-		// make a hash of the address for the DataStores to use to record usage of an item
-		const sha1_hash addrHashPtr = _sha_callback((const byte*)peerID.addr.get_hash_key(), peerID.addr.get_hash_key_len());
-
-		DhtID targetDhtID = _sha_callback((const byte*)message.vBuf.b, message.vBuf.len);
-		PairContainerBase<std::vector<byte> >* containerPtr = NULL;
-		// if the data length is 0 then this is a new container, copy the bytes to it.
-		if (_immutablePutStore.AddKeyToList(addrHashPtr, targetDhtID, &containerPtr, time(NULL)) == NEW_ITEM) {
-			for (int x=0; x<message.vBuf.len; ++x){
-				containerPtr->value.push_back(message.vBuf.b[x]);
-			}
-			containerPtr->lastUse = time(NULL);
-		}
-	}
-
-	// build a simple reply with this node's ID
-	send_put_response(sb, message.transactionID, packetSize, peerID);
-	return true;
-}
 
 bool DhtImpl::ProcessQueryGet(DHTMessage &message, DhtPeerID &peerID,
 		int packetSize) {
@@ -2080,52 +1945,6 @@ bool DhtImpl::ProcessQueryGet(DHTMessage &message, DhtPeerID &peerID,
 	return AccountAndSend(peerID, buf, sb.length(), packetSize);
 }
 
-bool DhtImpl::ProcessQueryVote(DHTMessage &message, DhtPeerID &peerID,
-		int packetSize) {
-	unsigned char buf[512];
-	smart_buffer sb(buf, sizeof(buf));
-
-	// read the target
-	DhtID target_id;
-	if(!message.target.b) {
-		Account(DHT_INVALID_PQ_BAD_TARGET_ID, packetSize);
-		return false;
-	}
-	CopyBytesToDhtID(target_id, message.target.b);
-
-	// read the token
-	if (!message.token.len) {
-		error_log("Bad write token");
-		Account(DHT_INVALID_PQ_BAD_WRITE_TOKEN, packetSize);
-		return false;
-	}
-
-	// validate the token
-	if (!ValidateWriteToken(peerID, message.token.b)) {
-		Account(DHT_INVALID_PQ_INVALID_TOKEN, packetSize);
-		return false;
-	}
-
-	// Send my own ID
-	sb("d");
-	AddIP(sb, message.id, peerID.addr);
-	sb("1:rd2:id20:")(DHT_ID_SIZE, _my_id_bytes);
-
-	if (message.vote > 5) message.vote = 5;
-	else if (message.vote < 0) message.vote = 0;
-
-	AddVoteToStore(sb, target_id, peerID.addr, message.vote);
-
-	sb("e");
-	put_transaction_id(sb, message.transactionID);
-	put_version(sb);
-	sb("1:y1:re");
-
-	assert(sb.length() >= 0 && sb.length() <= GetUDP_MTU(peerID.addr));
-
-	// Send the reply to the peer.
-	return AccountAndSend(peerID, buf, sb.length(), packetSize);
-}
 
 bool DhtImpl::ProcessQueryOpenChannel(DHTMessage &message, DhtPeerID &peerID, int packetSize) {
 	unsigned char buf[512];
@@ -2349,11 +2168,9 @@ bool DhtImpl::ProcessQuery(DhtPeerID& peerID, DHTMessage &message, int packetSiz
 		case DHT_QUERY_FIND_NODE: return ProcessQueryFindNode(message, peerID, packetSize);
 		case DHT_QUERY_GET_PEERS: return ProcessQueryGetPeers(message, peerID, packetSize);
 		case DHT_QUERY_ANNOUNCE_PEER: return ProcessQueryAnnouncePeer(message, peerID, packetSize);
-		case DHT_QUERY_VOTE: return ProcessQueryVote(message, peerID, packetSize);
-		case DHT_QUERY_PUT: return ProcessQueryPut(message, peerID, packetSize);
 		case DHT_QUERY_GET: return ProcessQueryGet(message, peerID, packetSize);
 		case DHT_QUERY_PUNCH: return ProcessQueryPunch(message, peerID, packetSize);
-		case DHT_QUERY_UNDEFINED: return false;
+		default: return false;
 	}
 
 	return true;

@@ -204,19 +204,6 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		if (target.len != DHT_ID_SIZE) _argumentsAreValid = false;
 		sequenceNum = args->GetInt64("seq", 0);
 	}
-	else if (strcmp(command,"put") == 0) {
-		dhtCommand = DHT_QUERY_PUT;
-		token.b = (byte*)args->GetString("token", &token.len);
-		vBuf.len = region.second - region.first;
-		vBuf.b = region.first;
-		signature.b = (byte*)args->GetString("sig", &signature.len); // 64 bytes
-		if (signature.b && signature.len != DHT_SIG_SIZE) _argumentsAreValid = false;
-		key.b = (byte*)args->GetString("k", &key.len); // 32 bytes
-		if (key.b && key.len != DHT_KEY_SIZE) _argumentsAreValid = false;
-		salt.b = (byte*)args->GetString("salt", &salt.len);
-		sequenceNum = args->GetInt64("seq", 0);
-		cas = args->GetInt("cas", 0);
-	}
 	else if(strcmp(command,"punch") == 0){
 		dhtCommand = DHT_QUERY_PUNCH;
 		Buffer punchTypeStr;
