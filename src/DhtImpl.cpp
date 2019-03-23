@@ -1445,7 +1445,7 @@ bool DhtImpl::ValidateWriteToken(const DhtPeerID &peer_id, const byte *token)
 	if (digest == token)
 		return true;
     else
-        error_log("wrong token from %s", print_sockaddr(peer_id.addr).c_str());
+		warnings_log("wrong token from %s, try check prev", print_sockaddr(peer_id.addr).c_str());
 
 	// See if it matches the prev token
 	tokendata[0] = _prev_token[0];
