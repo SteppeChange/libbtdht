@@ -2044,7 +2044,12 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 			  format_dht_id(peerID.id).c_str()
 			  );
 
-	if (_dht_events && message.punchType == HPTest) {
+    DhtID to_dht;
+    if(message.to_id)
+        CopyBytesToDhtID(to_dht, message.to_id);
+
+
+    if (_dht_events && message.punchType == HPTest) {
 
 		DhtID to_dht;
         if(message.punchTarget_id)
@@ -2096,14 +2101,19 @@ bool DhtImpl::ProcessQueryPunch(DHTMessage &message, DhtPeerID &peerID, int pack
 
         if(message.punchTarget_id)
         {
-            sha1_hash target_dht(message.punchTarget_id);
-            if(to_dht.is_empty() || _my_id == to_dht) {
-                punch_test(message.punchId, target_dht, punchTargetLocal);
-                punch_test(message.punchId, target_dht, punchTargetPublic);
-                if (_dht_events)
-                    _dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage(), message.punchTarget_id);
+            if(_my_id == to_dht) {
+                sha1_hash target_dht(message.punchTarget_id);
+                if(to_dht.is_empty() || _my_id == to_dht) {
+                    punch_test(message.punchId, target_dht, punchTargetLocal);
+                    punch_test(message.punchId, target_dht, punchTargetPublic);
+                    if (_dht_events)
+                        _dht_events->dht_recv_punch_request_relay(message.punchId, punchTargetRelay.get_sockaddr_storage(), message.punchTarget_id);
+                } else
+                    warnings_log("wrong to for incoming punch request to %s (my:%s)",
+                                 format_dht_id(to_dht).c_str(),
+                                 format_dht_id(_my_id).c_str());
             } else
-                warnings_log("wrong incoming punch request to %s (my:%s)",
+                warnings_log("wrong incoming punch to %s (my:%s)",
                              format_dht_id(to_dht).c_str(),
                              format_dht_id(_my_id).c_str());
         }
