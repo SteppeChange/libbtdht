@@ -2021,7 +2021,7 @@ public:
 	// bootstrap.
 	int _lowest_span;
 
-	// Possible states for _dht_bootstrap
+	// Possible _state_time for _dht_bootstrap
 	enum boot_state {
 		not_bootstrapped = 0,		//  1: dht not bootstrapped (initial state)
 		bootstrap_in_process = 1,

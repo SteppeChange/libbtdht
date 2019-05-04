@@ -47,7 +47,7 @@ public:
 	ExternalIPCounter(SHACallback* sha, IPEvents* events);
 	// return tru if addr cahnged
 	bool CountIP( const SockAddr& addr, const SockAddr& voter, uint64_t now);
-	void SetFixedPubliIp(const SockAddr& addr);
+	void SetFixedPublicIp(const SockAddr &addr);
 	std::pair<SockAddr,int> GetIP() const;
 	void Reset();
 	void EraseOutdated(uint64_t valid_time_ms);

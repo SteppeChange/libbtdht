@@ -70,9 +70,11 @@ void ExternalIPCounter::EraseOutdated(uint64_t valid_time_ms)
 
 }
 
-void ExternalIPCounter::SetFixedPubliIp(const SockAddr& addr)
+void ExternalIPCounter::SetFixedPublicIp(const SockAddr &addr)
 {
+    info_log("Set Fixed Public IP: %s", print_sockaddr(addr).c_str());
 	_fixed = true;
+    Reset();
 	std::pair<candidate_map::iterator, bool> inserted = _ip_rating.insert(std::make_pair(addr, 1));
 	_winnerV4 = inserted.first;
 
@@ -110,12 +112,17 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, ui
 		size_t ex_ips = _ip_rating.size();
 		if(ex_ips>1) // 2 different ip's
 		{
-			warnings_log("PublicIP: May be symmetric NAT detected");
+			warnings_log("PublicIP: May be symmetric NAT");
 			for (auto it=_ip_rating.begin(), end=_ip_rating.end(); it!=end; ++it) {
 				debug_log("PublicIP: Unique external IP: %s", print_sockaddr(it->first).c_str());
 			}
-			if(ex_ips==4 && _events)
+            if(ex_ips==4 && _events) {
+                warnings_log("PublicIP: Symmetric NAT");
 				_events->symmetric_NAT_detected();
+				// fix IP to prevent dht id changing for symmetric NAT
+                SetFixedPublicIp(_winnerV4->first);
+                return false;
+            }
 		};
 
 
