@@ -89,12 +89,13 @@ struct channel_info {
 };
 
 struct announce_info {
-	announce_info() : _time_of_announce(0), _vacant(0)
+	announce_info() : _time_of_announce(0), _vacant(0), _peer_type(0)
 	{
 	}
 	sha1_hash _announcer_id;
 	time_t _time_of_announce;
 	uint16_t _vacant;
+    uint8_t _peer_type;
 };
 
 typedef std::list<announce_info> announcers_list;
@@ -234,7 +235,8 @@ public:
 		DhtAddNodesCallback *addnodes_callback,
 		void *ctx,
 		int flags,
-		int vacant) = 0;
+		int vacant,
+		uint8_t peer_type) = 0;
 
 	/* get_peers classic wrapper
 	 * There is one diff between classic and ResolveName: classic get_peers returns ip:port,  ResolveName returns dht_id

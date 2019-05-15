@@ -1331,7 +1331,7 @@ void DhtImpl::AddVoteToStore(smart_buffer& sb, DhtID& target
 			vc->num_votes[2], vc->num_votes[3], vc->num_votes[4]);
 }
 
-void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant)
+void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant, uint8_t peer_type)
 {
 
 	std::vector<StoredContainer>::iterator it = GetStorageForID(info_hash);
@@ -1356,6 +1356,7 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 		if (announsed_peer == sp.id) {
 			sp.time = time(NULL);
 			sp.vacant = vacant;
+			sp.peer_type = peer_type;
 			info_log("Storage: Hash %s announcer %s is updated",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
 			return;
 		}
@@ -1368,6 +1369,7 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 	sp.time = time(NULL);
 	sp.id = announsed_peer;
 	sp.vacant = vacant;
+	sp.peer_type = peer_type;
 	sc->peers.push_back(sp);
 	info_log("Storage: Hash %s announcer %s is added",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
 	_peers_tracked++;
@@ -1584,9 +1586,9 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	}
 #endif
 
-	debug_log("<<< announce_peer: from_id='%s', info_hash='%s', token='%s', from_ip='%s'",
+	debug_log("<<< announce_peer: from_id='%s', info_hash='%s', token='%s', from_ip='%s', vacant='%d', peer_type='%d'",
               format_dht_id(peerID.id).c_str(), format_dht_id(info_hash_id).c_str(),
-              hexify(message.token.b).c_str(), print_sockaddr(peerID.addr).c_str());
+              hexify(message.token.b).c_str(), print_sockaddr(peerID.addr).c_str(), message.vacant, message.peer_type);
 
 	// validate the token
 
@@ -1602,7 +1604,7 @@ bool DhtImpl::ProcessQueryAnnouncePeer(DHTMessage& message, DhtPeerID &peerID,
 	}
 #endif
 
-	AddPeerToStore(info_hash_id, peerID.id, message.vacant);
+	AddPeerToStore(info_hash_id, peerID.id, message.vacant, message.peer_type);
 
 	// Send a simple reply with my ID
 	sb("d");
@@ -1722,6 +1724,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 					sb("20:")(sid);
 					sb("4:")(4, (unsigned char const*)&time_point);
 					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
+                    sb("1:")(1, (unsigned char const*)&((*peers)[i].peer_type));
 					num_found++;
 				}
 			}
@@ -1743,6 +1746,7 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 					sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
 					sb("4:")(4, (unsigned char const*)&time_point);
 					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
+                    sb("1:")(1, (unsigned char const*)&((*peers)[i].peer_type));
 					num_found++;
 				}
 			}
@@ -2598,7 +2602,8 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 	DhtAddNodesCallback *callb,
 	void *ctx,
 	int flags,
-	int vacant)
+	int vacant,
+	uint8_t peer_type)
 {
 	debug_log("DoAnnounce: hash:%s owner(me):%s", format_dht_id(target).c_str(), format_dht_id(_my_id).c_str());
 
@@ -2626,7 +2631,7 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 
 	if ((flags & announce_only_get) == 0) {
 		DhtProcessBase* announceProc = AnnounceDhtProcess::Create(this, *dpm, target
-			, cbPtrs, flags, vacant);
+			, cbPtrs, flags, vacant, peer_type);
 		dpm->AddDhtProcess(announceProc); // add announce second
 	}
 
@@ -3091,11 +3096,12 @@ void DhtImpl::AnnounceInfoHash(
 	DhtAddNodesCallback *addnodes_callback,
 	void *ctx,
 	int flags,
-	int vacant)
+	int vacant,
+	uint8_t peer_type)
 {
 	DhtID id;
 	CopyBytesToDhtID(id, info_hash);
-	DoAnnounce(id, addnodes_callback, ctx, flags, vacant);
+	DoAnnounce(id, addnodes_callback, ctx, flags, vacant, peer_type);
 }
 
 void DhtImpl::SetRate(int bytes_per_second)
@@ -4198,7 +4204,8 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 		}
 
 		if (valuesList) {
-//			int debug  = valuesList->GetCount();
+			int debug  = valuesList->GetCount();
+			assert(debug>1);
 			for(uint i=0; i!=valuesList->GetCount(); i++) {
 				Buffer b;
 				b.b = (byte*)valuesList->GetString(i, &b.len);
@@ -4224,6 +4231,12 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 					memcpy(&val, b.b, 2);
 					values.back()._vacant = val;
 				}
+                else if(b.len==1)
+                { // sb("1:")(1, (unsigned char const*)&((*peers)[i].peer_type));
+                    uint8_t val;
+                    memcpy(&val, b.b, 1);
+                    values.back()._peer_type = val;
+                }
 			}
 		}
 
@@ -4779,14 +4792,15 @@ const char* const AnnounceDhtProcess::ArgsNamesStr[] =
 	"2:id",
 	"9:info_hash",
 	"4:name",
+    "9:peer_type",
 	"4:port",
-	"4:seedi1e",   // no need to set the corresponding value, it is encodede here
+	"4:seed",   // no need to set the corresponding value, it is encodede here
 	"5:token",
 	"6:vacant"
 };
 
 AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
-	, const DhtID &target2, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant)
+	, const DhtID &target2, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant, uint8_t peer_type)
 	: DhtBroadcastScheduler(pDhtImpl,dpm,target2,startTime,consumerCallbacks)
 {
 	byte infoHashBytes[DHT_ID_SIZE];
@@ -4827,6 +4841,9 @@ AnnounceDhtProcess::AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm
 	argBuf4.SetNumBytesUsed(snprintf((char*)argBuf4.GetBufferPtr(), argBuf4.GetArrayLength(), "i%de", vacant));
 	announceArgumenterPtr->enabled[a_vacant] = true;
 
+    ArgumenterValueInfo& argBuf5 = announceArgumenterPtr->GetArgumenterValueInfo(a_peer_type);
+    argBuf5.SetNumBytesUsed(snprintf((char*)argBuf5.GetBufferPtr(), argBuf5.GetArrayLength(), "i%de", peer_type));
+    announceArgumenterPtr->enabled[a_peer_type] = true;
 }
 
 void AnnounceDhtProcess::Start()
@@ -4843,9 +4860,9 @@ AnnounceDhtProcess::~AnnounceDhtProcess()
 DhtProcessBase* AnnounceDhtProcess::Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 	const DhtID &target2,
 	CallBackPointers &cbPointers,
-	int flags, int vacant)
+	int flags, int vacant, uint8_t peer_type)
 {
-	AnnounceDhtProcess* process = new AnnounceDhtProcess(pDhtImpl, dpm, target2, time(NULL), cbPointers, vacant);
+	AnnounceDhtProcess* process = new AnnounceDhtProcess(pDhtImpl, dpm, target2, time(NULL), cbPointers, vacant, peer_type);
 
 	process->announceArgumenterPtr->enabled[a_seed] = flags & IDht::announce_seed;
 	return process;

@@ -75,6 +75,7 @@ void DHTMessage::Init()
 	responce_code = 0;
 	channel_translation_id = 0;
 	vacant = 0;
+	peer_type = 0;
 }
 
 /** This version of DecodeMessageData() can NOT extract a 'v' region
@@ -190,6 +191,7 @@ void DHTMessage::DecodeQuery(BencodedDict &bDict)
 		token.b = (byte*)args->GetString("token", &token.len);
 		seed = args->GetInt("seed", 0);
 		vacant = args->GetInt("vacant", 0);
+		peer_type = args->GetInt("peer_type", 0);
 	}
 	else if(strcmp(command,"vote") == 0){
 		dhtCommand = DHT_QUERY_VOTE;

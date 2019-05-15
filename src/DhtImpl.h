@@ -127,6 +127,7 @@ struct StoredPeer {
 	DhtID id;
 	time_t time;
 	int vacant;
+    uint8_t peer_type;
 };
 
 class DhtPeerID
@@ -1600,13 +1601,15 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 			a_id = 0,
 			a_info_hash,
 			a_name,
+            a_peer_type,
 			a_port,
 			a_seed,
 			a_token,
 			a_vacant,
 			ARGUMENTER_SIZE  // This must be here.  This must be called ARGUMENTER_SIZE
 		};
-		static const char * const ArgsNamesStr[];
+
+    static const char * const ArgsNamesStr[];
 		Argumenter* announceArgumenterPtr;
 
 		virtual void ImplementationSpecificReplyProcess(void *userdata, const DhtPeerID &peer_id, DHTMessage &message, uint flags) override;
@@ -1615,14 +1618,14 @@ class AnnounceDhtProcess : public DhtBroadcastScheduler
 
 	public:
 		AnnounceDhtProcess(DhtImpl* pDhtImpl, DhtProcessManager &dpm, const DhtID &target2
-			, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant);
+			, time_t startTime, const CallBackPointers &consumerCallbacks, int vacant, uint8_t peer_type);
 		~AnnounceDhtProcess();
 		virtual void Start() override;
 
 		static DhtProcessBase* Create(DhtImpl* pDhtImpl, DhtProcessManager &dpm,
 			const DhtID &target2,
 			CallBackPointers &cbPointers,
-			int flags, int vacant);
+			int flags, int vacant, uint8_t peer_type);
 
 		char const* name() const override { return "Announce"; }
 };
@@ -1860,7 +1863,7 @@ public:
 
 	void AnnounceInfoHash(const byte *info_hash,
 		DhtAddNodesCallback *addnodes_callback,
-		void *ctx, int flags, int vacant) override;
+		void *ctx, int flags, int vacant, uint8_t peer_type) override;
 
 	void FindNode(sha1_hash const& target,
 				  find_node_success const& success_fun,
@@ -2179,7 +2182,7 @@ public:
 	void AddVoteToStore(smart_buffer& sb, DhtID& target
 		, SockAddr const& addr, int vote);
 
-	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant);
+	void AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant, uint8_t peer_type);
 
 	void ExpirePeersFromStore(time_t expire_before);
 
@@ -2258,7 +2261,8 @@ public:
 		DhtAddNodesCallback *callb,
 		void *ctx,
 		int flags,
-		int vacant);
+		int vacant,
+		uint8_t peer_type);
 
 	uint PingStalestInBucket(uint buck);
 

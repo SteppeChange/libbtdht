@@ -159,6 +159,7 @@ public:
 	bool read_only;
 	int64 sequenceNum;  // 'seq' for mutable put
 	int vacant;
+    uint8_t peer_type;
 
 	HolePunch punchType;
 	int punchId;
