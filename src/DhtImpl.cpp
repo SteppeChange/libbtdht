@@ -173,7 +173,7 @@ DhtImpl::DhtImpl(UDPSocketInterface *udp_socket_mgr, UDPSocketInterface *udp6_so
 	_dht_utversion[0] = 'p';
 	_dht_utversion[1] = 'r';
 	_dht_utversion[2] = 0x2;
-	_dht_utversion[3] = 0x0;
+	_dht_utversion[3] = 0x1;
 
 	// allocators
 	_dht_bucket_allocator._size = sizeof(DhtBucket);
@@ -1715,6 +1715,22 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 			sb("6:valuesl");
 
 			int num_found = 0;
+
+			// get 1 peer_type>1
+            for(uint i=0; i<peers->size() && num_found<n; i++) {
+                if((*peers)[i].peer_type>1) {
+                    DhtID const &sid = (*peers)[i].id;
+                    uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
+                    debug_log("get_peers(incoming) peer_type response: found %s", format_dht_id(sid).c_str());
+                    sb("20:")(sid);
+                    sb("4:")(4, (unsigned char const*)&time_point);
+                    sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
+                    sb("1:")(1, (unsigned char const*)&((*peers)[i].peer_type));
+                    num_found++;
+                    break;
+                }
+            }
+
 			// get all vacant peers
 			for(uint i=0; i<peers->size() && num_found<n; i++) {
 				if((*peers)[i].vacant>0) {
@@ -1729,20 +1745,12 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 				}
 			}
 
-			int vacant_peers_stat = 0;
-			for(uint i=0; i<peers->size(); i++) {
-				if ((*peers)[i].vacant > 0)
-					vacant_peers_stat++;
-			}
-			debug_log("get_peers_stats: info_hash='%s' vacant=%d total=%d", format_dht_id(info_hash_id).c_str(), vacant_peers_stat, peers->size());;
-
-
 			// get remain
 			for(uint i=0; i<peers->size() && num_found<n; i++) {
 				if((*peers)[i].vacant==0) {
 					DhtID const &sid = (*peers)[i].id;
 					uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
-					debug_log("get_peers(incoming) response: found %s", format_dht_id(sid).c_str());
+					debug_log("get_peers(incoming) any response: found %s", format_dht_id(sid).c_str());
 					sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
 					sb("4:")(4, (unsigned char const*)&time_point);
 					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
