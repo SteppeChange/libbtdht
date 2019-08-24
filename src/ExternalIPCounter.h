@@ -33,7 +33,7 @@ typedef sha1_hash SHACallback(byte const* buf, int len);
 class IPEvents {
 	public:
 		virtual void symmetric_NAT_detected() = 0;
-		virtual void ip_changed(sockaddr_storage const& old, sockaddr_storage const& new_one) = 0;
+		virtual void dht_callback_public_ip_changed() = 0;
 };
 
 struct voter_info {
@@ -51,7 +51,7 @@ public:
 	std::pair<SockAddr,int> GetIP() const;
 	void Reset();
 	void EraseOutdated(uint64_t valid_time_ms);
-	void IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now);
+	bool IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now);
 	void DumpStatistics();
 
 private:

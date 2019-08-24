@@ -3634,7 +3634,7 @@ DhtPeer* DhtImpl::UpdateDhtTable(const DhtPeerID &id, uint origin, bool seen, in
 	if (id.addr.get_port() == 0)
 		return NULL;
 
-	// never add ourself to the routing table
+	// never add yourself to the routing table
 	if (id.id == _my_id)
 		return NULL;
 	if(id.addr == _ip_counter->GetIP().first)

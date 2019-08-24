@@ -142,16 +142,15 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, ui
 					print_sockaddr(addr).c_str(),
 					print_sockaddr(voter).c_str(),
 					_winnerV4->second, inserted.first->second);
-			IpChanged(addr, voter, now);
-			return true;
+			return IpChanged(addr, voter, now); // // return true for restart lib
 		}
 
 		return false;
 	}
 	else
 	{
+		// old voter
 		vit->second._voting_time = now;
-
 		if(vit->second._reported_ip == addr)
 			// already voted with te same address
 			return false;
@@ -194,8 +193,7 @@ bool ExternalIPCounter::CountIP( const SockAddr& addr, const SockAddr& voter, ui
 									 print_sockaddr(addr).c_str(),
 									 print_sockaddr(voter).c_str(),
 									 _winnerV4->second, vit->second);
-						IpChanged(addr, voter, now);
-						return true;
+						return IpChanged(addr, voter, now); // // return true for restart lib
 					} else
 						return false;
 
@@ -224,17 +222,47 @@ void ExternalIPCounter::DumpStatistics()
 
 }
 
-void ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now)
+
+bool ExternalIPCounter::IpChanged(const SockAddr& addr, const SockAddr& voter, uint64_t now)
 {
-	warnings_log("PublicIP: ip was changed %s -> %s",
+	warnings_log("PublicIP: ip or ip:port was changed %s -> %s",
 				 print_sockaddr(_winnerV4->first).c_str(),
 				 print_sockaddr(addr).c_str());
 
+	bool port_changed = _winnerV4->first.get_port() != addr.get_port();
+	bool ip_changed = !addr.ip_eq(_winnerV4->first);
+
 	DumpStatistics();
 
-	_events->ip_changed(_winnerV4->first.get_sockaddr_storage() , addr.get_sockaddr_storage());
+	// clear all tables and setup new voter like first voter
 	Reset();
-	CountIP(addr, voter, now);
+	bool res = CountIP(addr, voter, now);
+	assert(res == true); // first vote always returns true
+
+	// optimization:
+//	There are two variants:
+//	1. Ip was changed.
+//	2. Only port was changed.
+//  Port important for dht internal mechanisms
+// 		(see // never add yourself to the routing table)
+//		(see // local and public transport addresses for punch_test)
+//	But port is not important for system at all
+//	We don't use the port to sign dht_id
+//  We don't use the port and ip for announce. Announce operation announces only dht_id
+// So idea: - we will change winner always, but restart dht lib only if ip was changed.
+
+	if(ip_changed)
+	{
+		// inform other libs that ip was changed
+		_events->dht_callback_public_ip_changed();
+		// return true for restart DHT for new dht id
+		return true;
+	}
+	else
+	{
+		assert(port_changed);
+		return false;
+	}
 }
 
 std::pair<SockAddr,int> ExternalIPCounter::GetIP() const {
