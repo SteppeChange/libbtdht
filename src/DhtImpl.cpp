@@ -1334,6 +1334,11 @@ void DhtImpl::AddVoteToStore(smart_buffer& sb, DhtID& target
 void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer, int vacant, uint8_t peer_type)
 {
 
+	if (_peers_tracked > MAX_PEERS) {
+		error_log("PeersStoreS: MAX_PEERS is reached");
+		return;
+	}
+
 	std::vector<StoredContainer>::iterator it = GetStorageForID(info_hash);
 	StoredContainer *sc = NULL;
 
@@ -1342,12 +1347,9 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 	}
 
 	if (!sc) {
-		if (_peers_tracked > MAX_PEERS)
-			return;
-
 		sc = &(*_peer_store.insert(it, StoredContainer()));
 		sc->info_hash = info_hash;
-		info_log("Storage: Hash %s is added to the storage",  format_dht_id(sc->info_hash).c_str());
+		info_log("PeersStoreS: Hash %s is added to the storage",  format_dht_id(sc->info_hash).c_str());
 	}
 
 	// Check if the peer is already in the peer list.
@@ -1357,13 +1359,11 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 			sp.time = time(NULL);
 			sp.vacant = vacant;
 			sp.peer_type = peer_type;
-			info_log("Storage: Hash %s announcer %s is updated",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
+			info_log("PeersStoreS: Hash %s announcer %s is updated, v:%d  t:%d ",
+					 format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str(), sp.vacant, sp.peer_type);
 			return;
 		}
 	}
-
-	if (_peers_tracked > MAX_PEERS)
-		return;
 
 	StoredPeer sp;
 	sp.time = time(NULL);
@@ -1371,7 +1371,8 @@ void DhtImpl::AddPeerToStore(const DhtID &info_hash, const DhtID &announsed_peer
 	sp.vacant = vacant;
 	sp.peer_type = peer_type;
 	sc->peers.push_back(sp);
-	info_log("Storage: Hash %s announcer %s is added",  format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str());
+	info_log("PeersStoreS: Hash %s announcer %s is added, v:%d  t:%d ",
+			 format_dht_id(sc->info_hash).c_str(), format_dht_id(announsed_peer).c_str(), sp.vacant, sp.peer_type);
 	_peers_tracked++;
 }
 
@@ -1389,7 +1390,7 @@ void DhtImpl::ExpirePeersFromStore(time_t expire_before)
 			}
 		}
 		if (sp.size() == 0) {
-			info_log("Storage: Hash %s expired, removed from storage",  format_dht_id(it->info_hash).c_str());
+			info_log("PeersStoreS: Hash %s expired, removed from storage",  format_dht_id(it->info_hash).c_str());
 			it = _peer_store.erase(it);
 		} else {
 			++it;
@@ -1645,8 +1646,7 @@ void string_to_sha1_hash(std::string const &src, sha1_hash& dest) {
 	}
 }
 
-bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
-		int packetSize) {
+bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID, int packetSize) {
 	unsigned char buf[8192];
 	smart_buffer sb(buf, sizeof(buf));
 
@@ -1660,12 +1660,6 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	}
 	CopyBytesToDhtID(info_hash_id, message.infoHash.b);
 
-#if USE_DHTFEED
-		if (s_core.collect_dht_feed) {
-			add_to_dht_feed(message.infoHash.b, 0);
-		}
-#endif
-
 	// Make sure the num_peers first peers are shuffled.
 	DhtID null_id;
 	memset(null_id.id, 0, sizeof(null_id.id));
@@ -1675,7 +1669,6 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 	sb("d");
 	AddIP(sb, message.id, peerID.addr);
 	sb("1:rd");
-
 
 #ifdef TEST_ANNOUNCE
 	sha1_hash target;
@@ -1713,16 +1706,15 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 		assert(sb.length() + 10 + 8 * n <= mtu);
 		if (n > 0) {
 			sb("6:valuesl");
-
 			int num_found = 0;
-
 			// get 1 peer_type>1
             for(uint i=0; i<peers->size() && num_found<n; i++) {
                 if((*peers)[i].peer_type>1) {
                     DhtID const &sid = (*peers)[i].id;
                     uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
-                    debug_log("get_peers(incoming) peer_type response: found %s", format_dht_id(sid).c_str());
-                    sb("20:")(sid);
+                    info_log("PeersStoreS: get_peers(incoming 1) Hash %s announcer %s  v:%d  t:%d ",
+							 format_dht_id(info_hash_id).c_str(), format_dht_id(sid).c_str(), (*peers)[i].vacant, (*peers)[i].peer_type),
+					sb("20:")(sid);
                     sb("4:")(4, (unsigned char const*)&time_point);
                     sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
                     sb("1:")(1, (unsigned char const*)&((*peers)[i].peer_type));
@@ -1736,7 +1728,8 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 				if((*peers)[i].vacant>0) {
 					DhtID const &sid = (*peers)[i].id;
 					uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
-					debug_log("get_peers(incoming) vacant response: found %s", format_dht_id(sid).c_str());
+					info_log("PeersStoreS: get_peers(incoming vacant) Hash %s announcer %s  v:%d  t:%d ",
+							 format_dht_id(info_hash_id).c_str(), format_dht_id(sid).c_str(), (*peers)[i].vacant, (*peers)[i].peer_type),
 					sb("20:")(sid);
 					sb("4:")(4, (unsigned char const*)&time_point);
 					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
@@ -1750,7 +1743,8 @@ bool DhtImpl::ProcessQueryGetPeers(DHTMessage &message, DhtPeerID &peerID,
 				if((*peers)[i].vacant==0) {
 					DhtID const &sid = (*peers)[i].id;
 					uint32_t time_point = (*peers)[i].time; //holding the number of seconds since 00:00, Jan 1 1970 UTC
-					debug_log("get_peers(incoming) any response: found %s", format_dht_id(sid).c_str());
+					info_log("PeersStoreS: get_peers(incoming any) Hash %s announcer %s  v:%d  t:%d ",
+							 format_dht_id(info_hash_id).c_str(), format_dht_id(sid).c_str(), (*peers)[i].vacant, (*peers)[i].peer_type),
 					sb("20:")(sid); //  (4, (*sc)[i].ip)(2, (*sc)[i].port);
 					sb("4:")(4, (unsigned char const*)&time_point);
 					sb("2:")(2, (unsigned char const*)&((*peers)[i].vacant));
@@ -2613,7 +2607,7 @@ void DhtImpl::DoAnnounce(const DhtID &target,
 	int vacant,
 	uint8_t peer_type)
 {
-	debug_log("DoAnnounce: hash:%s owner(me):%s", format_dht_id(target).c_str(), format_dht_id(_my_id).c_str());
+	info_log("PeersStoreC: DoAnnounce Hash: %s announcer(me):%s v:%d t:%d ", format_dht_id(target).c_str(), format_dht_id(_my_id).c_str(), vacant, peer_type);
 
 	// announcing is a two stage process,
 	//  1) perform a get_peers dht search to build a list of nearist nodes
@@ -4256,8 +4250,13 @@ DhtFindNodeEntry* DhtLookupScheduler::ProcessMetadataAndPeer(
 			DHTPackedPeer *peers = (DHTPackedPeer*)malloc(sizeof(DHTPackedPeer) * peers_size);
 			uint numpeer = 0;
 
-			if(callbackPointers.getPeersCallback)
+			if(callbackPointers.getPeersCallback) {
+				for(announcers_list::const_iterator vit = values.begin(), vend = values.end(); vit!=vend; vit++) {
+					info_log("PeersStoreC: get_peers answer  Hash:%s announcer:%s v:%d t:%d ",
+							 format_dht_id(target).c_str(), format_dht_id(vit->_announcer_id).c_str(), vit->_vacant, vit->_peer_type);
+				}
 				callbackPointers.getPeersCallback(callbackPointers.callbackContext, bytes, values, false);
+			}
 
 			if (numpeer != 0 && callbackPointers.addnodesCallback != NULL){
 				callbackPointers.addnodesCallback(callbackPointers.callbackContext, bytes, (byte*)peers, numpeer, false);
